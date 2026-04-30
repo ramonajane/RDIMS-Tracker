@@ -15,13 +15,16 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
+  projects: string[];
 };
 
-export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit }: Props) => {
+export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, projects }: Props) => {
   const { user } = useAuth();
   const [list, setList] = useState<string[]>(units);
   const [def, setDef] = useState<string>(defaultUnit);
   const [add, setAdd] = useState("");
+  const [projList, setProjList] = useState<string[]>(projects);
+  const [addProj, setAddProj] = useState("");
   const [busy, setBusy] = useState(false);
 
   const addUnit = () => {
@@ -38,12 +41,21 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit }: Props
     if (def === u) setDef(next[0]);
   };
 
+  const addProject = () => {
+    const v = addProj.trim();
+    if (!v) return;
+    if (projList.some(p => p.toLowerCase() === v.toLowerCase())) { toast.error("Project already exists"); return; }
+    if (v.length > 120) { toast.error("Too long"); return; }
+    setProjList([...projList, v]); setAddProj("");
+  };
+  const removeProject = (p: string) => setProjList(projList.filter(x => x !== p));
+
   const save = async () => {
     if (!user) return;
     setBusy(true);
     try {
       const { error } = await supabase.from("user_settings").upsert({
-        user_id: user.id, units: list, default_unit: def,
+        user_id: user.id, units: list, default_unit: def, projects: projList,
       });
       if (error) throw error;
       toast.success("Settings saved");
@@ -81,6 +93,26 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit }: Props
               <SelectTrigger className="mt-2"><SelectValue /></SelectTrigger>
               <SelectContent>{list.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
             </Select>
+          </div>
+          <div className="border-t pt-4">
+            <Label>Projects</Label>
+            <p className="text-xs text-muted-foreground mt-1">Used as the dropdown when adding supplies and checking out.</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {projList.length === 0 && <p className="text-xs text-muted-foreground italic">No projects yet — add one below.</p>}
+              {projList.map(p => (
+                <Badge key={p} variant="secondary" className="pl-2 pr-1 py-1 gap-1">
+                  {p}
+                  <button onClick={()=>removeProject(p)} className="ml-1 rounded-full hover:bg-destructive/20 p-0.5">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-3">
+              <Input placeholder="e.g. Marketing Campaign Q3" value={addProj} onChange={e=>setAddProj(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addProject()} />
+              <Button variant="outline" onClick={addProject}>Add</Button>
+            </div>
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">

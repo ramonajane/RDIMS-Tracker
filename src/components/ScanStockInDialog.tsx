@@ -14,9 +14,10 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
+  projects: string[];
 };
 
-export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Props) => {
+export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit, projects }: Props) => {
   
   const [phase, setPhase] = useState<"scan" | "confirm">("scan");
   const [code, setCode] = useState("");
@@ -24,18 +25,24 @@ export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Pr
   const [name, setName] = useState("");
   const [unit, setUnit] = useState(defaultUnit);
   const [qty, setQty] = useState<number>(1);
+  const [project, setProject] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [existingName, setExistingName] = useState<string>("");
+  const [existingProject, setExistingProject] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) { setPhase("scan"); setCode(""); setName(""); setUnit(defaultUnit); setQty(1); setExistingId(null); setExistingName(""); }
+    if (open) { setPhase("scan"); setCode(""); setName(""); setUnit(defaultUnit); setQty(1); setProject(""); setExistingId(null); setExistingName(""); setExistingProject(null); }
   }, [open, defaultUnit]);
 
   const handleDetected = async (decoded: string) => {
     setCode(decoded);
     const { data } = await supabase
-      .from("supplies").select("id,name,unit").eq("code", decoded).maybeSingle();
-    if (data) { setExistingId(data.id); setExistingName(data.name); setUnit(data.unit); }
+      .from("supplies").select("id,name,unit,project").eq("code", decoded).maybeSingle();
+    if (data) {
+      setExistingId(data.id); setExistingName(data.name); setUnit(data.unit);
+      setExistingProject(data.project ?? null);
+      setProject(data.project ?? "");
+    }
     setPhase("confirm");
   };
 
@@ -43,18 +50,19 @@ export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Pr
     if (qty <= 0) { toast.error("Quantity must be > 0"); return; }
     setBusy(true);
     try {
+      const finalProject = project || existingProject || null;
       if (existingId) {
         const { data: cur } = await supabase.from("supplies").select("stock").eq("id", existingId).single();
         const { error } = await supabase.from("supplies").update({ stock: (cur?.stock ?? 0) + qty }).eq("id", existingId);
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: existingId, type: "in", quantity: qty });
+        await supabase.from("transactions").insert({ user_id: null, supply_id: existingId, type: "in", quantity: qty, project: finalProject });
         toast.success(`+${qty} added to ${existingName}`);
       } else {
         if (!name.trim()) { toast.error("Name required for new supply"); setBusy(false); return; }
         const { data: created, error } = await supabase.from("supplies")
-          .insert({ user_id: null, name: name.trim(), code, unit, stock: qty }).select().single();
+          .insert({ user_id: null, name: name.trim(), code, unit, stock: qty, project: finalProject }).select().single();
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty });
+        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty, project: finalProject });
         toast.success(`Added ${name} (+${qty})`);
       }
       onOpenChange(false);
@@ -97,6 +105,16 @@ export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Pr
                 <Label>Quantity</Label>
                 <Input type="number" min={1} value={qty} onChange={e=>setQty(parseInt(e.target.value)||1)} />
               </div>
+            </div>
+            <div>
+              <Label>Project (optional)</Label>
+              <Select value={project || "__none__"} onValueChange={(v)=>setProject(v === "__none__" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No project</SelectItem>
+                  {projects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter className="pt-2">
               <Button variant="outline" onClick={()=>setPhase("scan")}>Scan Again</Button>

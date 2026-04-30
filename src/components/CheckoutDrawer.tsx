@@ -12,13 +12,14 @@ type Props = {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   supplies: Supply[];
+  projects: string[];
 };
 
 type Pending = { supply: Supply; previousStock: number };
 
 const PRESET_QUANTITIES = [1, 2, 5, 10, 25];
 
-export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
+export const CheckoutDrawer = ({ open, onOpenChange, supplies, projects }: Props) => {
   const [feedback, setFeedback] = useState<"ok" | "err" | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [last, setLast] = useState<{ name: string; stock: number; unit: string; qty: number; project: string | null } | null>(null);
@@ -27,12 +28,12 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
   const [qty, setQty] = useState(1);
   const [project, setProject] = useState("");
 
-  // Project suggestions sourced from the catalog
-  const knownProjects = useMemo(() => {
-    const set = new Set<string>();
+  // Project options: union of managed list + any projects already on supplies (so guests still see options)
+  const projectOptions = useMemo(() => {
+    const set = new Set<string>(projects);
     supplies.forEach(s => { if (s.project) set.add(s.project); });
-    return Array.from(set).sort();
-  }, [supplies]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [supplies, projects]);
 
   useEffect(() => { setFeedbackPrefs(prefs); }, [prefs]);
 
@@ -267,34 +268,21 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
                   <Briefcase className="h-4 w-4 text-blue-500" />
                   Project this supply is for
                 </label>
-                <input
-                  type="text"
-                  list="checkout-project-suggestions"
-                  value={project}
-                  onChange={(e) => setProject(e.target.value)}
-                  placeholder="e.g. Marketing Campaign Q3"
-                  className="w-full h-12 rounded-xl border-2 border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors"
-                />
-                <datalist id="checkout-project-suggestions">
-                  {knownProjects.map((p) => <option key={p} value={p} />)}
-                </datalist>
-                {knownProjects.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {knownProjects.slice(0, 6).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setProject(p)}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-                          project === p
-                            ? "bg-blue-500 border-blue-500 text-white"
-                            : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700"
-                        }`}
-                      >
-                        {p}
-                      </button>
+                {projectOptions.length === 0 ? (
+                  <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    No projects defined yet. Ask an admin to add projects in Settings.
+                  </p>
+                ) : (
+                  <select
+                    value={project}
+                    onChange={(e) => setProject(e.target.value)}
+                    className="w-full h-12 rounded-xl border-2 border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors"
+                  >
+                    <option value="">— Select a project —</option>
+                    {projectOptions.map((p) => (
+                      <option key={p} value={p}>{p}</option>
                     ))}
-                  </div>
+                  </select>
                 )}
               </div>
 

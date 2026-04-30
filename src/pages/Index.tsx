@@ -13,7 +13,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Package2, Plus, Search, ShoppingCart, Settings, LogOut, LogIn, ScanLine, Pencil, QrCode, Trash2, AlertTriangle, ChevronDown } from "lucide-react";
+import { Package2, Plus, Search, ShoppingCart, Settings, LogOut, LogIn, ScanLine, Pencil, QrCode, AlertTriangle, ChevronDown, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { CheckoutDrawer } from "@/components/CheckoutDrawer";
 import { SupplyForm } from "@/components/SupplyForm";
@@ -21,6 +21,9 @@ import { SettingsDialog } from "@/components/SettingsDialog";
 import { QuickStockInDialog } from "@/components/QuickStockInDialog";
 import { ScanStockInDialog } from "@/components/ScanStockInDialog";
 import { SupplyQR, downloadQR } from "@/components/SupplyQR";
+import { SupplyBreakdownDialog, SupplyGroup } from "@/components/SupplyBreakdownDialog";
+
+const groupKey = (name: string) => name.trim().toLowerCase();
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
@@ -30,6 +33,7 @@ const Index = () => {
   const [lowOnly, setLowOnly] = useState(false);
   const [units, setUnits] = useState<string[]>(["piece","ream","box","pack","bottle"]);
   const [defaultUnit, setDefaultUnit] = useState("piece");
+  const [projects, setProjects] = useState<string[]>([]);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -38,8 +42,7 @@ const Index = () => {
   const [manualIn, setManualIn] = useState(false);
   const [scanIn, setScanIn] = useState(false);
   const [qrFor, setQrFor] = useState<Supply | null>(null);
-
-  // One shared inventory for everyone (guests + signed-in users).
+  const [breakdownGroup, setBreakdownGroup] = useState<SupplyGroup | null>(null);
 
   // Initial fetch + ensure settings row
   useEffect(() => {
@@ -54,7 +57,9 @@ const Index = () => {
         if (!st) {
           await supabase.from("user_settings").insert({ user_id: user.id });
         } else {
-          setUnits(st.units); setDefaultUnit(st.default_unit);
+          setUnits(st.units);
+          setDefaultUnit(st.default_unit);
+          setProjects((st as any).projects ?? []);
         }
       }
     })();
@@ -76,28 +81,83 @@ const Index = () => {
     if (user) {
       ch.on("postgres_changes", { event: "*", schema: "public", table: "user_settings", filter: `user_id=eq.${user.id}` },
         (payload) => {
-          if (payload.new) { setUnits((payload.new as any).units); setDefaultUnit((payload.new as any).default_unit); }
+          if (payload.new) {
+            setUnits((payload.new as any).units);
+            setDefaultUnit((payload.new as any).default_unit);
+            setProjects((payload.new as any).projects ?? []);
+          }
         });
     }
     ch.subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [user, loading]);
 
-  const filtered = useMemo(() => {
-    let list = supplies;
+  // Group supplies by name
+  const groups = useMemo<SupplyGroup[]>(() => {
+    const map = new Map<string, Supply[]>();
+    for (const s of supplies) {
+      const k = groupKey(s.name);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(s);
+    }
+    const result: SupplyGroup[] = [];
+    map.forEach((members, k) => {
+      // sort members oldest-first so representative is stable
+      const sorted = [...members].sort((a, b) => a.created_at.localeCompare(b.created_at));
+      const rep = sorted[0];
+      const totalStock = sorted.reduce((n, m) => n + m.stock, 0);
+      const lowThreshold = sorted.reduce((n, m) => n + m.low_stock_threshold, 0);
+      const units = new Set(sorted.map(m => m.unit));
+      result.push({
+        key: k,
+        name: rep.name,
+        unit: rep.unit,
+        totalStock,
+        lowThreshold,
+        representativeCode: rep.code,
+        members: sorted,
+        mixedUnits: units.size > 1,
+      });
+    });
+    // newest-first by most recent member updated_at
+    result.sort((a, b) => {
+      const at = a.members.reduce((m, x) => x.updated_at > m ? x.updated_at : m, a.members[0].updated_at);
+      const bt = b.members.reduce((m, x) => x.updated_at > m ? x.updated_at : m, b.members[0].updated_at);
+      return bt.localeCompare(at);
+    });
+    return result;
+  }, [supplies]);
+
+  const filteredGroups = useMemo(() => {
+    let list = groups;
     if (search.trim()) {
       const q = search.toLowerCase();
-      list = list.filter(s => s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q) || (s.notes ?? "").toLowerCase().includes(q));
+      list = list.filter(g =>
+        g.name.toLowerCase().includes(q) ||
+        g.members.some(m =>
+          m.code.toLowerCase().includes(q) ||
+          (m.notes ?? "").toLowerCase().includes(q) ||
+          (m.project ?? "").toLowerCase().includes(q)
+        )
+      );
     }
-    if (lowOnly) list = list.filter(s => s.stock <= s.low_stock_threshold);
+    if (lowOnly) list = list.filter(g => g.totalStock <= g.lowThreshold);
     return list;
-  }, [supplies, search, lowOnly]);
+  }, [groups, search, lowOnly]);
 
-  const lowCount = supplies.filter(s => s.stock <= s.low_stock_threshold).length;
+  // Keep an open breakdown dialog in sync with realtime updates
+  useEffect(() => {
+    if (!breakdownGroup) return;
+    const fresh = groups.find(g => g.key === breakdownGroup.key);
+    if (!fresh) setBreakdownGroup(null);
+    else if (fresh !== breakdownGroup) setBreakdownGroup(fresh);
+  }, [groups, breakdownGroup]);
+
+  const lowCount = groups.filter(g => g.totalStock <= g.lowThreshold).length;
   const totalItems = supplies.reduce((n, s) => n + s.stock, 0);
 
   const removeSupply = async (s: Supply) => {
-    if (!confirm(`Delete "${s.name}"? This also removes its history.`)) return;
+    if (!confirm(`Delete "${s.name}"${s.project ? ` (${s.project})` : ""}? This also removes its history.`)) return;
     const { error } = await supabase.from("supplies").delete().eq("id", s.id);
     if (error) toast.error(error.message); else toast.success("Deleted");
   };
@@ -146,7 +206,7 @@ const Index = () => {
         <div className="grid grid-cols-3 gap-3">
           <Card className="p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Items</p>
-            <p className="text-2xl font-bold text-primary mt-1">{supplies.length}</p>
+            <p className="text-2xl font-bold text-primary mt-1">{groups.length}</p>
           </Card>
           <Card className="p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Stock</p>
@@ -193,7 +253,7 @@ const Index = () => {
         <Card className="p-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
           <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search by name, code, or notes…" value={search} onChange={e=>setSearch(e.target.value)} className="pl-9" />
+            <Input placeholder="Search by name, code, project, or notes…" value={search} onChange={e=>setSearch(e.target.value)} className="pl-9" />
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Switch id="low" checked={lowOnly} onCheckedChange={setLowOnly} />
@@ -203,23 +263,28 @@ const Index = () => {
           </div>
         </Card>
 
-        {/* Supply list */}
-        {filtered.length === 0 ? (
+        {/* Supply list (grouped) */}
+        {filteredGroups.length === 0 ? (
           <Card className="p-12 text-center">
             <Package2 className="h-12 w-12 mx-auto text-muted-foreground/50" />
-            <p className="mt-3 text-muted-foreground">{supplies.length === 0 ? "No supplies yet. Add your first item." : "No supplies match your filter."}</p>
+            <p className="mt-3 text-muted-foreground">{groups.length === 0 ? "No supplies yet." : "No supplies match your filter."}</p>
           </Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map(s => {
-              const low = s.stock <= s.low_stock_threshold;
-              const out = s.stock === 0;
+            {filteredGroups.map(g => {
+              const low = g.totalStock <= g.lowThreshold;
+              const out = g.totalStock === 0;
+              const projectCount = new Set(g.members.map(m => m.project ?? "__none__")).size;
               return (
-                <Card key={s.id} className="p-4 hover:shadow-md transition-shadow">
+                <Card
+                  key={g.key}
+                  className="p-4 hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={()=>setBreakdownGroup(g)}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <h3 className="font-semibold truncate">{s.name}</h3>
-                      <p className="text-xs text-muted-foreground font-mono truncate">{s.code}</p>
+                      <h3 className="font-semibold truncate">{g.name}</h3>
+                      <p className="text-xs text-muted-foreground font-mono truncate">{g.representativeCode}</p>
                     </div>
                     <Badge variant={out ? "destructive" : low ? "outline" : "secondary"}
                       className={low && !out ? "border-warning text-warning" : ""}>
@@ -227,31 +292,20 @@ const Index = () => {
                     </Badge>
                   </div>
                   <div className="mt-3 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-primary">{s.stock}</span>
-                    <span className="text-sm text-muted-foreground">{s.unit}</span>
+                    <span className="text-3xl font-bold text-primary">{g.totalStock}</span>
+                    <span className="text-sm text-muted-foreground">{g.unit}{g.mixedUnits ? " *" : ""}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">Low at ≤ {s.low_stock_threshold}</p>
-                  {s.project && (
-                    <p className="text-xs mt-1">
-                      <span className="text-muted-foreground">Project: </span>
-                      <span className="font-medium text-foreground">{s.project}</span>
-                    </p>
-                  )}
-                  {s.notes && <p className="text-xs mt-2 line-clamp-2 text-muted-foreground">{s.notes}</p>}
-                  <div className="flex gap-1 mt-3">
-                    <Button size="sm" variant="outline" className="flex-1" onClick={()=>setQrFor(s)}>
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                    <Layers className="h-3 w-3" />
+                    Across {projectCount} project{projectCount === 1 ? "" : "s"} · tap to view breakdown
+                  </p>
+                  <div className="flex gap-1 mt-3" onClick={(e)=>e.stopPropagation()}>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={()=>setQrFor(g.members[0])}>
                       <QrCode className="h-4 w-4 mr-1" /> QR
                     </Button>
-                    {user && (
-                      <>
-                        <Button size="sm" variant="outline" className="flex-1" onClick={()=>{ setEditing(s); setFormOpen(true); }}>
-                          <Pencil className="h-4 w-4 mr-1" /> Edit
-                        </Button>
-                        <Button size="icon" variant="outline" onClick={()=>removeSupply(s)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </>
-                    )}
+                    <Button size="sm" variant="outline" className="flex-1" onClick={()=>setBreakdownGroup(g)}>
+                      <Layers className="h-4 w-4 mr-1" /> Breakdown
+                    </Button>
                   </div>
                 </Card>
               );
@@ -260,12 +314,21 @@ const Index = () => {
         )}
       </main>
 
-      <CheckoutDrawer open={checkoutOpen} onOpenChange={setCheckoutOpen} supplies={supplies} />
+      <CheckoutDrawer open={checkoutOpen} onOpenChange={setCheckoutOpen} supplies={supplies} projects={projects} />
       <SupplyForm open={formOpen} onOpenChange={(o)=>{ setFormOpen(o); if (!o) setEditing(null); }}
-        units={units} defaultUnit={defaultUnit} editing={editing} />
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} units={units} defaultUnit={defaultUnit} />
-      <QuickStockInDialog open={manualIn} onOpenChange={setManualIn} units={units} defaultUnit={defaultUnit} />
-      <ScanStockInDialog open={scanIn} onOpenChange={setScanIn} units={units} defaultUnit={defaultUnit} />
+        units={units} defaultUnit={defaultUnit} projects={projects} editing={editing} />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} units={units} defaultUnit={defaultUnit} projects={projects} />
+      <QuickStockInDialog open={manualIn} onOpenChange={setManualIn} units={units} defaultUnit={defaultUnit} projects={projects} />
+      <ScanStockInDialog open={scanIn} onOpenChange={setScanIn} units={units} defaultUnit={defaultUnit} projects={projects} />
+
+      <SupplyBreakdownDialog
+        group={breakdownGroup}
+        onOpenChange={(o)=>{ if (!o) setBreakdownGroup(null); }}
+        canManage={!!user}
+        onEdit={(s)=>{ setBreakdownGroup(null); setEditing(s); setFormOpen(true); }}
+        onDelete={(s)=>removeSupply(s)}
+        onShowQR={(s)=>setQrFor(s)}
+      />
 
       <Dialog open={!!qrFor} onOpenChange={(o)=>{ if(!o) setQrFor(null); }}>
         <DialogContent className="max-w-xs">
@@ -274,6 +337,7 @@ const Index = () => {
             <div className="flex flex-col items-center gap-3">
               <SupplyQR code={qrFor.code} size={220} />
               <p className="text-xs font-mono text-muted-foreground">{qrFor.code}</p>
+              {qrFor.project && <p className="text-xs text-muted-foreground">Project: <span className="font-medium text-foreground">{qrFor.project}</span></p>}
               <Button onClick={()=>downloadQR(qrFor.code, qrFor.name)} className="w-full">Download PNG</Button>
             </div>
           )}

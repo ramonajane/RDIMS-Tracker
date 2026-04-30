@@ -26,11 +26,12 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
+  projects: string[];
   initialCode?: string;
   editing?: Supply | null;
 };
 
-export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode, editing }: Props) => {
+export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, initialCode, editing }: Props) => {
   const { user } = useAuth();
   const [name, setName] = useState(editing?.name ?? "");
   const [code, setCode] = useState(editing?.code ?? initialCode ?? generateCode());
@@ -127,8 +128,14 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode
           </div>
           <div>
             <Label>Project (optional)</Label>
-            <Input value={project} onChange={e=>setProject(e.target.value)} placeholder="e.g. Marketing Campaign Q3" />
-            <p className="text-xs text-muted-foreground mt-1">Default project this supply belongs to.</p>
+            <Select value={project || "__none__"} onValueChange={(v)=>setProject(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">No project</SelectItem>
+                {projects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">Default project this supply belongs to. Manage the list in Settings.</p>
           </div>
           <div>
             <Label>Notes</Label>

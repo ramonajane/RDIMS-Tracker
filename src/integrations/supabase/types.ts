@@ -97,18 +97,21 @@ export type Database = {
       user_settings: {
         Row: {
           default_unit: string
+          projects: string[]
           units: string[]
           updated_at: string
           user_id: string
         }
         Insert: {
           default_unit?: string
+          projects?: string[]
           units?: string[]
           updated_at?: string
           user_id: string
         }
         Update: {
           default_unit?: string
+          projects?: string[]
           units?: string[]
           updated_at?: string
           user_id?: string
