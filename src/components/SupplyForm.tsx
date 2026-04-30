@@ -55,7 +55,7 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode
   };
 
   const save = async () => {
-    if (!user) return;
+    // Guests are allowed (user may be null) — they write to the shared inventory.
     const r = schema.safeParse({ name, code, unit, stock, low_stock_threshold: threshold, notes });
     if (!r.success) { toast.error(r.error.errors[0].message); return; }
     setBusy(true);
