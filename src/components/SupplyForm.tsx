@@ -38,6 +38,7 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode
   const [stock, setStock] = useState<number>(editing?.stock ?? 0);
   const [threshold, setThreshold] = useState<number>(editing?.low_stock_threshold ?? 5);
   const [notes, setNotes] = useState(editing?.notes ?? "");
+  const [project, setProject] = useState(editing?.project ?? "");
   const [busy, setBusy] = useState(false);
 
   // Reset when opening
@@ -48,6 +49,7 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode
     setStock(editing?.stock ?? 0);
     setThreshold(editing?.low_stock_threshold ?? 5);
     setNotes(editing?.notes ?? "");
+    setProject(editing?.project ?? "");
   };
 
   const handleOpen = (o: boolean) => {
@@ -56,29 +58,27 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode
   };
 
   const save = async () => {
-    // Guests are allowed (user may be null) — they write to the shared inventory.
-    const r = schema.safeParse({ name, code, unit, stock, low_stock_threshold: threshold, notes });
+    const r = schema.safeParse({ name, code, unit, stock, low_stock_threshold: threshold, notes, project });
     if (!r.success) { toast.error(r.error.errors[0].message); return; }
     setBusy(true);
     try {
       if (editing) {
         const { error } = await supabase.from("supplies").update({
-          name, code, unit, stock, low_stock_threshold: threshold, notes: notes || null,
+          name, code, unit, stock, low_stock_threshold: threshold,
+          notes: notes || null, project: project.trim() || null,
         }).eq("id", editing.id);
         if (error) throw error;
         toast.success("Supply updated");
       } else {
-        const ownerId = user?.id ?? null;
-        const { error } = await supabase.from("supplies").insert({
-          user_id: ownerId, name, code, unit, stock, low_stock_threshold: threshold, notes: notes || null,
-        });
+        const { data: created, error } = await supabase.from("supplies").insert({
+          user_id: null, name, code, unit, stock, low_stock_threshold: threshold,
+          notes: notes || null, project: project.trim() || null,
+        }).select().single();
         if (error) throw error;
-        if (stock > 0) {
-          const lookup = supabase.from("supplies").select("id").eq("code", code);
-          const { data: row } = await (ownerId ? lookup.eq("user_id", ownerId) : lookup.is("user_id", null)).single();
+        if (stock > 0 && created) {
           await supabase.from("transactions").insert({
-            user_id: ownerId, supply_id: row!.id,
-            type: "in", quantity: stock,
+            user_id: null, supply_id: created.id,
+            type: "in", quantity: stock, project: project.trim() || null,
           });
         }
         toast.success("Supply added");
