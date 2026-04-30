@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAuth } from "@/hooks/useAuth";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Scanner } from "./Scanner";
@@ -17,7 +17,7 @@ type Props = {
 };
 
 export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Props) => {
-  const { user } = useAuth();
+  
   const [phase, setPhase] = useState<"scan" | "confirm">("scan");
   const [code, setCode] = useState("");
   const [existingId, setExistingId] = useState<string | null>(null);
