@@ -1,0 +1,1 @@
+ALTER TABLE public.user_settings ADD COLUMN IF NOT EXISTS projects text[] NOT NULL DEFAULT ARRAY[]::text[];
