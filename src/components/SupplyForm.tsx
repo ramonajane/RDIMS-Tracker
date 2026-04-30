@@ -67,13 +67,16 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode
         if (error) throw error;
         toast.success("Supply updated");
       } else {
+        const ownerId = user?.id ?? null;
         const { error } = await supabase.from("supplies").insert({
-          user_id: user.id, name, code, unit, stock, low_stock_threshold: threshold, notes: notes || null,
+          user_id: ownerId, name, code, unit, stock, low_stock_threshold: threshold, notes: notes || null,
         });
         if (error) throw error;
         if (stock > 0) {
+          const lookup = supabase.from("supplies").select("id").eq("code", code);
+          const { data: row } = await (ownerId ? lookup.eq("user_id", ownerId) : lookup.is("user_id", null)).single();
           await supabase.from("transactions").insert({
-            user_id: user.id, supply_id: (await supabase.from("supplies").select("id").eq("user_id", user.id).eq("code", code).single()).data!.id,
+            user_id: ownerId, supply_id: row!.id,
             type: "in", quantity: stock,
           });
         }
