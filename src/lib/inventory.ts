@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 export type Supply = {
   id: string;
-  user_id: string;
+  user_id: string | null;
   name: string;
   code: string;
   unit: string;
