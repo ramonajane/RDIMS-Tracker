@@ -39,14 +39,14 @@ const Index = () => {
   const [scanIn, setScanIn] = useState(false);
   const [qrFor, setQrFor] = useState<Supply | null>(null);
 
-  // Guests are allowed: no redirect to /auth.
+  // One shared inventory for everyone (guests + signed-in users).
 
   // Initial fetch + ensure settings row
   useEffect(() => {
     if (loading) return;
     (async () => {
-      const supQuery = supabase.from("supplies").select("*").order("created_at", { ascending: false });
-      const { data: sup } = await (user ? supQuery.eq("user_id", user.id) : supQuery.is("user_id", null));
+      const { data: sup } = await supabase
+        .from("supplies").select("*").order("created_at", { ascending: false });
       setSupplies(sup ?? []);
 
       if (user) {
@@ -60,12 +60,11 @@ const Index = () => {
     })();
   }, [user, loading]);
 
-  // Realtime subscription
+  // Realtime subscription (shared inventory — no owner filter)
   useEffect(() => {
     if (loading) return;
-    const filter = user ? `user_id=eq.${user.id}` : `user_id=is.null`;
     const ch = supabase.channel("supplies-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "supplies", filter },
+      .on("postgres_changes", { event: "*", schema: "public", table: "supplies" },
         (payload) => {
           setSupplies(prev => {
             if (payload.eventType === "INSERT") return [payload.new as Supply, ...prev];
