@@ -13,7 +13,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Package2, Plus, Search, ShoppingCart, Settings, LogOut, ScanLine, Pencil, QrCode, Trash2, AlertTriangle, ChevronDown } from "lucide-react";
+import { Package2, Plus, Search, ShoppingCart, Settings, LogOut, LogIn, ScanLine, Pencil, QrCode, Trash2, AlertTriangle, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { CheckoutDrawer } from "@/components/CheckoutDrawer";
 import { SupplyForm } from "@/components/SupplyForm";
