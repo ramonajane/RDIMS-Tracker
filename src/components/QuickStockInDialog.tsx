@@ -14,17 +14,19 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
+  projects: string[];
 };
 
-export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Props) => {
-  
+export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit, projects }: Props) => {
+
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [unit, setUnit] = useState(defaultUnit);
   const [qty, setQty] = useState<number>(1);
+  const [project, setProject] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
-  const reset = () => { setCode(""); setName(""); setUnit(defaultUnit); setQty(1); };
+  const reset = () => { setCode(""); setName(""); setUnit(defaultUnit); setQty(1); setProject(""); };
 
   const submit = async () => {
     if (qty <= 0) { toast.error("Quantity must be > 0"); return; }
@@ -37,15 +39,15 @@ export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit }: P
         const newStock = existing.stock + qty;
         const { error } = await supabase.from("supplies").update({ stock: newStock }).eq("id", existing.id);
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: existing.id, type: "in", quantity: qty });
+        await supabase.from("transactions").insert({ user_id: null, supply_id: existing.id, type: "in", quantity: qty, project: project || existing.project || null });
         toast.success(`+${qty} ${existing.unit} of ${existing.name}`);
       } else {
         if (!name.trim()) { toast.error("Name required for new supply"); setBusy(false); return; }
         const { data: created, error } = await supabase.from("supplies")
-          .insert({ user_id: null, name: name.trim(), code: code.trim(), unit, stock: qty })
+          .insert({ user_id: null, name: name.trim(), code: code.trim(), unit, stock: qty, project: project || null })
           .select().single();
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty });
+        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty, project: project || null });
         toast.success(`Added ${name} (+${qty})`);
       }
       reset();
