@@ -13,7 +13,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Package2, Plus, Search, ShoppingCart, Settings, LogOut, ScanLine, Pencil, QrCode, Trash2, AlertTriangle, ChevronDown } from "lucide-react";
+import { Package2, Plus, Search, ShoppingCart, Settings, LogOut, LogIn, ScanLine, Pencil, QrCode, Trash2, AlertTriangle, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { CheckoutDrawer } from "@/components/CheckoutDrawer";
 import { SupplyForm } from "@/components/SupplyForm";
@@ -39,28 +39,33 @@ const Index = () => {
   const [scanIn, setScanIn] = useState(false);
   const [qrFor, setQrFor] = useState<Supply | null>(null);
 
-  useEffect(() => { if (!loading && !user) nav("/auth", { replace: true }); }, [user, loading, nav]);
+  // Guests are allowed: no redirect to /auth.
 
   // Initial fetch + ensure settings row
   useEffect(() => {
-    if (!user) return;
+    if (loading) return;
     (async () => {
-      const { data: sup } = await supabase.from("supplies").select("*").order("created_at", { ascending: false });
+      const supQuery = supabase.from("supplies").select("*").order("created_at", { ascending: false });
+      const { data: sup } = await (user ? supQuery.eq("user_id", user.id) : supQuery.is("user_id", null));
       setSupplies(sup ?? []);
-      const { data: st } = await supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle();
-      if (!st) {
-        await supabase.from("user_settings").insert({ user_id: user.id });
-      } else {
-        setUnits(st.units); setDefaultUnit(st.default_unit);
+
+      if (user) {
+        const { data: st } = await supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle();
+        if (!st) {
+          await supabase.from("user_settings").insert({ user_id: user.id });
+        } else {
+          setUnits(st.units); setDefaultUnit(st.default_unit);
+        }
       }
     })();
-  }, [user]);
+  }, [user, loading]);
 
   // Realtime subscription
   useEffect(() => {
-    if (!user) return;
+    if (loading) return;
+    const filter = user ? `user_id=eq.${user.id}` : `user_id=is.null`;
     const ch = supabase.channel("supplies-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "supplies", filter: `user_id=eq.${user.id}` },
+      .on("postgres_changes", { event: "*", schema: "public", table: "supplies", filter },
         (payload) => {
           setSupplies(prev => {
             if (payload.eventType === "INSERT") return [payload.new as Supply, ...prev];
@@ -68,14 +73,16 @@ const Index = () => {
             if (payload.eventType === "DELETE") return prev.filter(s => s.id !== (payload.old as Supply).id);
             return prev;
           });
-        })
-      .on("postgres_changes", { event: "*", schema: "public", table: "user_settings", filter: `user_id=eq.${user.id}` },
+        });
+    if (user) {
+      ch.on("postgres_changes", { event: "*", schema: "public", table: "user_settings", filter: `user_id=eq.${user.id}` },
         (payload) => {
           if (payload.new) { setUnits((payload.new as any).units); setDefaultUnit((payload.new as any).default_unit); }
-        })
-      .subscribe();
+        });
+    }
+    ch.subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [user]);
+  }, [user, loading]);
 
   const filtered = useMemo(() => {
     let list = supplies;
@@ -96,7 +103,7 @@ const Index = () => {
     if (error) toast.error(error.message); else toast.success("Deleted");
   };
 
-  if (loading || !user) {
+  if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-subtle"><Package2 className="h-8 w-8 text-primary animate-pulse" /></div>;
   }
 
@@ -111,16 +118,26 @@ const Index = () => {
             </div>
             <div className="min-w-0">
               <h1 className="font-bold text-lg sm:text-xl truncate">RDIMS Office Supplies Tracker</h1>
-              <p className="text-xs text-primary-foreground/70 truncate">{user.email}</p>
+              <p className="text-xs text-primary-foreground/70 truncate">
+                {user ? user.email : "Guest — shared inventory"}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={()=>setSettingsOpen(true)}>
-              <Settings className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={signOut}>
-              <LogOut className="h-5 w-5" />
-            </Button>
+            {user && (
+              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={()=>setSettingsOpen(true)}>
+                <Settings className="h-5 w-5" />
+              </Button>
+            )}
+            {user ? (
+              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={signOut} title="Sign out">
+                <LogOut className="h-5 w-5" />
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={()=>nav("/auth")}>
+                <LogIn className="h-4 w-4 mr-1.5" /> Sign in
+              </Button>
+            )}
           </div>
         </div>
       </header>

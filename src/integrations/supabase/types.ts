@@ -25,7 +25,7 @@ export type Database = {
           stock: number
           unit: string
           updated_at: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           code: string
@@ -37,7 +37,7 @@ export type Database = {
           stock?: number
           unit?: string
           updated_at?: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           code?: string
@@ -49,7 +49,7 @@ export type Database = {
           stock?: number
           unit?: string
           updated_at?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -60,7 +60,7 @@ export type Database = {
           quantity: number
           supply_id: string
           type: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -68,7 +68,7 @@ export type Database = {
           quantity: number
           supply_id: string
           type: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -76,7 +76,7 @@ export type Database = {
           quantity?: number
           supply_id?: string
           type?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {

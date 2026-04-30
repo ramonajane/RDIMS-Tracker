@@ -93,6 +93,24 @@ const Auth = () => {
               </TabsContent>
             ))}
           </Tabs>
+
+          <div className="mt-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-blue-700/40" />
+            <span className="text-xs uppercase tracking-wider text-blue-400">or</span>
+            <div className="h-px flex-1 bg-blue-700/40" />
+          </div>
+
+          <Button
+            onClick={() => nav("/", { replace: true })}
+            variant="outline"
+            size="lg"
+            className="mt-4 w-full h-11 rounded-xl bg-transparent border-blue-500/50 text-blue-100 hover:bg-blue-500/10 hover:text-white font-medium"
+          >
+            Continue as guest
+          </Button>
+          <p className="mt-2 text-center text-[11px] text-blue-400/80">
+            Guests use a shared inventory — no account needed.
+          </p>
         </div>
       </div>
     </div>

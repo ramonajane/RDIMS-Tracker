@@ -27,26 +27,26 @@ export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit }: P
   const reset = () => { setCode(""); setName(""); setUnit(defaultUnit); setQty(1); };
 
   const submit = async () => {
-    if (!user) return;
     if (qty <= 0) { toast.error("Quantity must be > 0"); return; }
+    const ownerId = user?.id ?? null;
     setBusy(true);
     try {
-      // Find by code
-      const { data: existing } = await supabase
-        .from("supplies").select("*").eq("user_id", user.id).eq("code", code.trim()).maybeSingle();
+      // Find by code (within current scope: own inventory or shared)
+      const lookup = supabase.from("supplies").select("*").eq("code", code.trim());
+      const { data: existing } = await (ownerId ? lookup.eq("user_id", ownerId) : lookup.is("user_id", null)).maybeSingle();
       if (existing) {
         const newStock = existing.stock + qty;
         const { error } = await supabase.from("supplies").update({ stock: newStock }).eq("id", existing.id);
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: user.id, supply_id: existing.id, type: "in", quantity: qty });
+        await supabase.from("transactions").insert({ user_id: ownerId, supply_id: existing.id, type: "in", quantity: qty });
         toast.success(`+${qty} ${existing.unit} of ${existing.name}`);
       } else {
         if (!name.trim()) { toast.error("Name required for new supply"); setBusy(false); return; }
         const { data: created, error } = await supabase.from("supplies")
-          .insert({ user_id: user.id, name: name.trim(), code: code.trim(), unit, stock: qty })
+          .insert({ user_id: ownerId, name: name.trim(), code: code.trim(), unit, stock: qty })
           .select().single();
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: user.id, supply_id: created!.id, type: "in", quantity: qty });
+        await supabase.from("transactions").insert({ user_id: ownerId, supply_id: created!.id, type: "in", quantity: qty });
         toast.success(`Added ${name} (+${qty})`);
       }
       reset();
