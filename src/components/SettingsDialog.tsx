@@ -41,12 +41,21 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, project
     if (def === u) setDef(next[0]);
   };
 
+  const addProject = () => {
+    const v = addProj.trim();
+    if (!v) return;
+    if (projList.some(p => p.toLowerCase() === v.toLowerCase())) { toast.error("Project already exists"); return; }
+    if (v.length > 120) { toast.error("Too long"); return; }
+    setProjList([...projList, v]); setAddProj("");
+  };
+  const removeProject = (p: string) => setProjList(projList.filter(x => x !== p));
+
   const save = async () => {
     if (!user) return;
     setBusy(true);
     try {
       const { error } = await supabase.from("user_settings").upsert({
-        user_id: user.id, units: list, default_unit: def,
+        user_id: user.id, units: list, default_unit: def, projects: projList,
       });
       if (error) throw error;
       toast.success("Settings saved");
