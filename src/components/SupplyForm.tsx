@@ -18,6 +18,7 @@ const schema = z.object({
   stock: z.number().int().min(0).max(1_000_000),
   low_stock_threshold: z.number().int().min(0).max(1_000_000),
   notes: z.string().trim().max(500).optional(),
+  project: z.string().trim().max(120).optional(),
 });
 
 type Props = {
