@@ -1,73 +1,11 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 217 33% 17%;
-
+    --background: 0 0% 100%;      /* White page background */
+    --foreground: 222.2 84% 4.9%; /* Deep dark blue/black text */
     --card: 0 0% 100%;
-    --card-foreground: 217 33% 17%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 217 33% 17%;
-
-    --primary: 217 91% 50%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 213 94% 68%;
-    --primary-deep: 222 73% 30%;
-
-    --secondary: 213 94% 95%;
-    --secondary-foreground: 222 73% 30%;
-
-    --muted: 214 32% 94%;
-    --muted-foreground: 215 16% 47%;
-
-    --accent: 199 89% 48%;
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 84% 55%;
-    --destructive-foreground: 0 0% 100%;
-
-    --success: 142 71% 40%;
-    --success-foreground: 0 0% 100%;
-
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-
-    --border: 214 32% 88%;
-    --input: 214 32% 88%;
-    --ring: 217 91% 50%;
-
-    --radius: 0.75rem;
-
-    --gradient-primary: linear-gradient(135deg, hsl(217 91% 50%), hsl(213 94% 68%));
-    --gradient-header: linear-gradient(135deg, hsl(222 73% 30%), hsl(217 91% 50%));
-    --gradient-subtle: linear-gradient(180deg, hsl(210 40% 98%), hsl(213 94% 95%));
-
-    --shadow-sm: 0 1px 2px hsl(217 91% 50% / 0.06);
-    --shadow-md: 0 4px 16px -4px hsl(217 91% 50% / 0.18);
-    --shadow-lg: 0 10px 40px -10px hsl(217 91% 50% / 0.30);
-    --shadow-glow: 0 0 30px hsl(213 94% 68% / 0.45);
-
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    --card-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;  /* Nice Blue for icons/buttons */
+    --primary-foreground: 210 40% 98%;
+    /* ... rest of your variables ... */
   }
 }
