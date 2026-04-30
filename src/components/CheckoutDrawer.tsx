@@ -12,6 +12,7 @@ type Props = {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   supplies: Supply[];
+  projects: string[];
 };
 
 type Pending = { supply: Supply; previousStock: number };
