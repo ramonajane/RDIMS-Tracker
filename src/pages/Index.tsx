@@ -103,7 +103,7 @@ const Index = () => {
     if (error) toast.error(error.message); else toast.success("Deleted");
   };
 
-  if (loading || !user) {
+  if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-gradient-subtle"><Package2 className="h-8 w-8 text-primary animate-pulse" /></div>;
   }
 
@@ -118,16 +118,26 @@ const Index = () => {
             </div>
             <div className="min-w-0">
               <h1 className="font-bold text-lg sm:text-xl truncate">RDIMS Office Supplies Tracker</h1>
-              <p className="text-xs text-primary-foreground/70 truncate">{user.email}</p>
+              <p className="text-xs text-primary-foreground/70 truncate">
+                {user ? user.email : "Guest — shared inventory"}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={()=>setSettingsOpen(true)}>
-              <Settings className="h-5 w-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={signOut}>
-              <LogOut className="h-5 w-5" />
-            </Button>
+            {user && (
+              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={()=>setSettingsOpen(true)}>
+                <Settings className="h-5 w-5" />
+              </Button>
+            )}
+            {user ? (
+              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={signOut} title="Sign out">
+                <LogOut className="h-5 w-5" />
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={()=>nav("/auth")}>
+                <LogIn className="h-4 w-4 mr-1.5" /> Sign in
+              </Button>
+            )}
           </div>
         </div>
       </header>
