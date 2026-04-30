@@ -106,6 +106,16 @@ export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit, proj
                 <Input type="number" min={1} value={qty} onChange={e=>setQty(parseInt(e.target.value)||1)} />
               </div>
             </div>
+            <div>
+              <Label>Project (optional)</Label>
+              <Select value={project || "__none__"} onValueChange={(v)=>setProject(v === "__none__" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">No project</SelectItem>
+                  {projects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
             <DialogFooter className="pt-2">
               <Button variant="outline" onClick={()=>setPhase("scan")}>Scan Again</Button>
               <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : "Confirm Stock In"}</Button>
