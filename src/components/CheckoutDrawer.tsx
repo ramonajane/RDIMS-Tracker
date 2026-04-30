@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Scanner } from "@/components/Scanner";
 import { Supply, adjustStock } from "@/lib/inventory";
 import { toast } from "sonner";
-import { X, Undo2, Volume2, Vibrate, Minus, Plus, ShoppingCart } from "lucide-react";
+import { X, Undo2, Volume2, Vibrate, Minus, Plus, ShoppingCart, Briefcase } from "lucide-react";
 import { beepError, beepSuccess, getFeedbackPrefs, setFeedbackPrefs } from "@/lib/feedback";
 
 type Props = {
