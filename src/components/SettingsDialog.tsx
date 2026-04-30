@@ -94,6 +94,26 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, project
               <SelectContent>{list.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}</SelectContent>
             </Select>
           </div>
+          <div className="border-t pt-4">
+            <Label>Projects</Label>
+            <p className="text-xs text-muted-foreground mt-1">Used as the dropdown when adding supplies and checking out.</p>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {projList.length === 0 && <p className="text-xs text-muted-foreground italic">No projects yet — add one below.</p>}
+              {projList.map(p => (
+                <Badge key={p} variant="secondary" className="pl-2 pr-1 py-1 gap-1">
+                  {p}
+                  <button onClick={()=>removeProject(p)} className="ml-1 rounded-full hover:bg-destructive/20 p-0.5">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-3">
+              <Input placeholder="e.g. Marketing Campaign Q3" value={addProj} onChange={e=>setAddProj(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addProject()} />
+              <Button variant="outline" onClick={addProject}>Add</Button>
+            </div>
+          </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={()=>onOpenChange(false)}>Cancel</Button>
