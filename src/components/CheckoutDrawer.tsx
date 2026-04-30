@@ -19,7 +19,7 @@ type Pending = { supply: Supply; previousStock: number };
 
 const PRESET_QUANTITIES = [1, 2, 5, 10, 25];
 
-export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
+export const CheckoutDrawer = ({ open, onOpenChange, supplies, projects }: Props) => {
   const [feedback, setFeedback] = useState<"ok" | "err" | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [last, setLast] = useState<{ name: string; stock: number; unit: string; qty: number; project: string | null } | null>(null);
@@ -28,12 +28,12 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
   const [qty, setQty] = useState(1);
   const [project, setProject] = useState("");
 
-  // Project suggestions sourced from the catalog
-  const knownProjects = useMemo(() => {
-    const set = new Set<string>();
+  // Project options: union of managed list + any projects already on supplies (so guests still see options)
+  const projectOptions = useMemo(() => {
+    const set = new Set<string>(projects);
     supplies.forEach(s => { if (s.project) set.add(s.project); });
-    return Array.from(set).sort();
-  }, [supplies]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [supplies, projects]);
 
   useEffect(() => { setFeedbackPrefs(prefs); }, [prefs]);
 
