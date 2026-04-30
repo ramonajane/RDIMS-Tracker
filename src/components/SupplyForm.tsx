@@ -26,6 +26,7 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
+  projects: string[];
   initialCode?: string;
   editing?: Supply | null;
 };
