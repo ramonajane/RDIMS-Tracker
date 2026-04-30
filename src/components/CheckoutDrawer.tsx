@@ -22,7 +22,7 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
   const [pending, setPending] = useState<Pending | null>(null);
   const [last, setLast] = useState<{ name: string; stock: number; unit: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [prefs, setPrefs] = useState(getFeedbackPrefs());
+  const [prefs, setPrefs] = useState(() => getFeedbackPrefs());
 
   useEffect(() => { setFeedbackPrefs(prefs); }, [prefs]);
 
