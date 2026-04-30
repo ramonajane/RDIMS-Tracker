@@ -14,9 +14,10 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
+  projects: string[];
 };
 
-export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Props) => {
+export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit, projects }: Props) => {
   
   const [phase, setPhase] = useState<"scan" | "confirm">("scan");
   const [code, setCode] = useState("");
