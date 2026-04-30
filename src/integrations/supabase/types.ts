@@ -22,6 +22,7 @@ export type Database = {
           low_stock_threshold: number
           name: string
           notes: string | null
+          project: string | null
           stock: number
           unit: string
           updated_at: string
@@ -34,6 +35,7 @@ export type Database = {
           low_stock_threshold?: number
           name: string
           notes?: string | null
+          project?: string | null
           stock?: number
           unit?: string
           updated_at?: string
@@ -46,6 +48,7 @@ export type Database = {
           low_stock_threshold?: number
           name?: string
           notes?: string | null
+          project?: string | null
           stock?: number
           unit?: string
           updated_at?: string
@@ -57,6 +60,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          project: string | null
           quantity: number
           supply_id: string
           type: string
@@ -65,6 +69,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          project?: string | null
           quantity: number
           supply_id: string
           type: string
@@ -73,6 +78,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          project?: string | null
           quantity?: number
           supply_id?: string
           type?: string

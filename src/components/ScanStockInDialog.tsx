@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAuth } from "@/hooks/useAuth";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Scanner } from "./Scanner";
@@ -17,7 +17,7 @@ type Props = {
 };
 
 export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Props) => {
-  const { user } = useAuth();
+  
   const [phase, setPhase] = useState<"scan" | "confirm">("scan");
   const [code, setCode] = useState("");
   const [existingId, setExistingId] = useState<string | null>(null);
@@ -32,31 +32,29 @@ export const ScanStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Pr
   }, [open, defaultUnit]);
 
   const handleDetected = async (decoded: string) => {
-    const ownerId = user?.id ?? null;
     setCode(decoded);
-    const lookup = supabase.from("supplies").select("id,name,unit").eq("code", decoded);
-    const { data } = await (ownerId ? lookup.eq("user_id", ownerId) : lookup.is("user_id", null)).maybeSingle();
+    const { data } = await supabase
+      .from("supplies").select("id,name,unit").eq("code", decoded).maybeSingle();
     if (data) { setExistingId(data.id); setExistingName(data.name); setUnit(data.unit); }
     setPhase("confirm");
   };
 
   const submit = async () => {
     if (qty <= 0) { toast.error("Quantity must be > 0"); return; }
-    const ownerId = user?.id ?? null;
     setBusy(true);
     try {
       if (existingId) {
         const { data: cur } = await supabase.from("supplies").select("stock").eq("id", existingId).single();
         const { error } = await supabase.from("supplies").update({ stock: (cur?.stock ?? 0) + qty }).eq("id", existingId);
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: ownerId, supply_id: existingId, type: "in", quantity: qty });
+        await supabase.from("transactions").insert({ user_id: null, supply_id: existingId, type: "in", quantity: qty });
         toast.success(`+${qty} added to ${existingName}`);
       } else {
         if (!name.trim()) { toast.error("Name required for new supply"); setBusy(false); return; }
         const { data: created, error } = await supabase.from("supplies")
-          .insert({ user_id: ownerId, name: name.trim(), code, unit, stock: qty }).select().single();
+          .insert({ user_id: null, name: name.trim(), code, unit, stock: qty }).select().single();
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: ownerId, supply_id: created!.id, type: "in", quantity: qty });
+        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty });
         toast.success(`Added ${name} (+${qty})`);
       }
       onOpenChange(false);

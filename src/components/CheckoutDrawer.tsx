@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Scanner } from "@/components/Scanner";
 import { Supply, adjustStock } from "@/lib/inventory";
 import { toast } from "sonner";
-import { X, Undo2, Volume2, Vibrate, Minus, Plus, ShoppingCart } from "lucide-react";
+import { X, Undo2, Volume2, Vibrate, Minus, Plus, ShoppingCart, Briefcase } from "lucide-react";
 import { beepError, beepSuccess, getFeedbackPrefs, setFeedbackPrefs } from "@/lib/feedback";
 
 type Props = {
@@ -21,19 +21,30 @@ const PRESET_QUANTITIES = [1, 2, 5, 10, 25];
 export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
   const [feedback, setFeedback] = useState<"ok" | "err" | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
-  const [last, setLast] = useState<{ name: string; stock: number; unit: string; qty: number } | null>(null);
+  const [last, setLast] = useState<{ name: string; stock: number; unit: string; qty: number; project: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [prefs, setPrefs] = useState(() => getFeedbackPrefs());
   const [qty, setQty] = useState(1);
+  const [project, setProject] = useState("");
+
+  // Project suggestions sourced from the catalog
+  const knownProjects = useMemo(() => {
+    const set = new Set<string>();
+    supplies.forEach(s => { if (s.project) set.add(s.project); });
+    return Array.from(set).sort();
+  }, [supplies]);
 
   useEffect(() => { setFeedbackPrefs(prefs); }, [prefs]);
 
   useEffect(() => {
-    if (!open) { setPending(null); setFeedback(null); setLast(null); setQty(1); }
+    if (!open) { setPending(null); setFeedback(null); setLast(null); setQty(1); setProject(""); }
   }, [open]);
 
   useEffect(() => {
-    if (pending) setQty(1);
+    if (pending) {
+      setQty(1);
+      setProject(pending.supply.project ?? "");
+    }
   }, [pending]);
 
   const flash = (kind: "ok" | "err") => {
@@ -64,11 +75,19 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
     if (!pending) return;
     const finalQty = Math.min(qty, pending.previousStock);
     if (finalQty <= 0) { toast.error("Quantity must be at least 1"); return; }
+    const trimmedProject = project.trim();
+    if (!trimmedProject) { toast.error("Please indicate which project this supply is for"); return; }
     setBusy(true);
     try {
-      await adjustStock(pending.supply, -finalQty, "out");
-      setLast({ name: pending.supply.name, stock: pending.previousStock - finalQty, unit: pending.supply.unit, qty: finalQty });
-      toast.success(`Checked out ${finalQty} ${pending.supply.unit} of ${pending.supply.name}`);
+      await adjustStock(pending.supply, -finalQty, "out", trimmedProject);
+      setLast({
+        name: pending.supply.name,
+        stock: pending.previousStock - finalQty,
+        unit: pending.supply.unit,
+        qty: finalQty,
+        project: trimmedProject,
+      });
+      toast.success(`Checked out ${finalQty} ${pending.supply.unit} of ${pending.supply.name} for ${trimmedProject}`);
       setPending(null);
     } catch (e: any) {
       beepError(); toast.error(e.message ?? "Checkout failed");
@@ -83,7 +102,7 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
     if (!supply) { toast.error("Could not find item to undo"); return; }
     setBusy(true);
     try {
-      await adjustStock(supply, last.qty, "in");
+      await adjustStock(supply, last.qty, "in", last.project);
       toast.success(`Undid checkout — ${last.name} restored`);
       setLast(null);
     } catch (e: any) { toast.error(e.message ?? "Undo failed"); }
@@ -242,6 +261,43 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
                 })}
               </div>
 
+              {/* Project picker */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <Briefcase className="h-4 w-4 text-blue-500" />
+                  Project this supply is for
+                </label>
+                <input
+                  type="text"
+                  list="checkout-project-suggestions"
+                  value={project}
+                  onChange={(e) => setProject(e.target.value)}
+                  placeholder="e.g. Marketing Campaign Q3"
+                  className="w-full h-12 rounded-xl border-2 border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-colors"
+                />
+                <datalist id="checkout-project-suggestions">
+                  {knownProjects.map((p) => <option key={p} value={p} />)}
+                </datalist>
+                {knownProjects.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {knownProjects.slice(0, 6).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setProject(p)}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                          project === p
+                            ? "bg-blue-500 border-blue-500 text-white"
+                            : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-700"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Summary line */}
               <p className="text-center text-sm text-gray-400">
                 <span className="font-semibold text-gray-700">{qty}</span>
@@ -249,17 +305,22 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
                 {pending.supply.name}
                 {" ("}
                 {pending.supply.unit}
-                {")"}
+                {") "}
+                {project.trim() && (
+                  <>
+                    → <span className="font-semibold text-blue-600">{project.trim()}</span>
+                  </>
+                )}
               </p>
 
               {/* Buttons */}
               <div className="space-y-2.5 pt-1">
                 <button
                   onClick={confirmCheckout}
-                  disabled={busy}
-                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-base transition-colors disabled:opacity-50 shadow-lg shadow-blue-100"
+                  disabled={busy || !project.trim()}
+                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-100"
                 >
-                  {busy ? "Saving…" : "Add to cart"}
+                  {busy ? "Saving…" : project.trim() ? "Confirm checkout" : "Enter project to continue"}
                 </button>
                 <button
                   onClick={cancelPending}

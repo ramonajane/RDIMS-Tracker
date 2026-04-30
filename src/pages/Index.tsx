@@ -39,14 +39,14 @@ const Index = () => {
   const [scanIn, setScanIn] = useState(false);
   const [qrFor, setQrFor] = useState<Supply | null>(null);
 
-  // Guests are allowed: no redirect to /auth.
+  // One shared inventory for everyone (guests + signed-in users).
 
   // Initial fetch + ensure settings row
   useEffect(() => {
     if (loading) return;
     (async () => {
-      const supQuery = supabase.from("supplies").select("*").order("created_at", { ascending: false });
-      const { data: sup } = await (user ? supQuery.eq("user_id", user.id) : supQuery.is("user_id", null));
+      const { data: sup } = await supabase
+        .from("supplies").select("*").order("created_at", { ascending: false });
       setSupplies(sup ?? []);
 
       if (user) {
@@ -60,12 +60,11 @@ const Index = () => {
     })();
   }, [user, loading]);
 
-  // Realtime subscription
+  // Realtime subscription (shared inventory — no owner filter)
   useEffect(() => {
     if (loading) return;
-    const filter = user ? `user_id=eq.${user.id}` : `user_id=is.null`;
     const ch = supabase.channel("supplies-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "supplies", filter },
+      .on("postgres_changes", { event: "*", schema: "public", table: "supplies" },
         (payload) => {
           setSupplies(prev => {
             if (payload.eventType === "INSERT") return [payload.new as Supply, ...prev];
@@ -119,7 +118,7 @@ const Index = () => {
             <div className="min-w-0">
               <h1 className="font-bold text-lg sm:text-xl truncate">RDIMS Office Supplies Tracker</h1>
               <p className="text-xs text-primary-foreground/70 truncate">
-                {user ? user.email : "Guest — shared inventory"}
+                {user ? user.email : "Guest — checkout only"}
               </p>
             </div>
           </div>
@@ -165,25 +164,29 @@ const Index = () => {
             <ShoppingCart className="h-5 w-5 mr-2" /> Checkout
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="lg" variant="secondary" className="flex-1 min-w-[160px] shadow-md">
-                <Plus className="h-5 w-5 mr-2" /> Stock In <ChevronDown className="h-4 w-4 ml-1 opacity-70" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={()=>setManualIn(true)}>
-                <Pencil className="h-4 w-4 mr-2" /> Manually add a supply
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={()=>setScanIn(true)}>
-                <ScanLine className="h-4 w-4 mr-2" /> Scan for stock-in
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {user && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="lg" variant="secondary" className="flex-1 min-w-[160px] shadow-md">
+                    <Plus className="h-5 w-5 mr-2" /> Stock In <ChevronDown className="h-4 w-4 ml-1 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={()=>setManualIn(true)}>
+                    <Pencil className="h-4 w-4 mr-2" /> Manually add a supply
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={()=>setScanIn(true)}>
+                    <ScanLine className="h-4 w-4 mr-2" /> Scan for stock-in
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          <Button onClick={()=>{ setEditing(null); setFormOpen(true); }} size="lg" variant="outline" className="shadow-sm">
-            <Plus className="h-5 w-5 mr-2" /> New Supply
-          </Button>
+              <Button onClick={()=>{ setEditing(null); setFormOpen(true); }} size="lg" variant="outline" className="shadow-sm">
+                <Plus className="h-5 w-5 mr-2" /> New Supply
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Search + filter */}
@@ -228,17 +231,27 @@ const Index = () => {
                     <span className="text-sm text-muted-foreground">{s.unit}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Low at ≤ {s.low_stock_threshold}</p>
+                  {s.project && (
+                    <p className="text-xs mt-1">
+                      <span className="text-muted-foreground">Project: </span>
+                      <span className="font-medium text-foreground">{s.project}</span>
+                    </p>
+                  )}
                   {s.notes && <p className="text-xs mt-2 line-clamp-2 text-muted-foreground">{s.notes}</p>}
                   <div className="flex gap-1 mt-3">
                     <Button size="sm" variant="outline" className="flex-1" onClick={()=>setQrFor(s)}>
                       <QrCode className="h-4 w-4 mr-1" /> QR
                     </Button>
-                    <Button size="sm" variant="outline" className="flex-1" onClick={()=>{ setEditing(s); setFormOpen(true); }}>
-                      <Pencil className="h-4 w-4 mr-1" /> Edit
-                    </Button>
-                    <Button size="icon" variant="outline" onClick={()=>removeSupply(s)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {user && (
+                      <>
+                        <Button size="sm" variant="outline" className="flex-1" onClick={()=>{ setEditing(s); setFormOpen(true); }}>
+                          <Pencil className="h-4 w-4 mr-1" /> Edit
+                        </Button>
+                        <Button size="icon" variant="outline" onClick={()=>removeSupply(s)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </Card>
               );
