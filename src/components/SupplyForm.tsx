@@ -18,7 +18,6 @@ const schema = z.object({
   stock: z.number().int().min(0).max(1_000_000),
   low_stock_threshold: z.number().int().min(0).max(1_000_000),
   notes: z.string().trim().max(500).optional(),
-  project: z.string().trim().max(120).optional(),
 });
 
 type Props = {
@@ -26,12 +25,11 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
-  projects: string[];
   initialCode?: string;
   editing?: Supply | null;
 };
 
-export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, initialCode, editing }: Props) => {
+export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode, editing }: Props) => {
   const { user } = useAuth();
   const [name, setName] = useState(editing?.name ?? "");
   const [code, setCode] = useState(editing?.code ?? initialCode ?? generateCode());
@@ -39,10 +37,8 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, i
   const [stock, setStock] = useState<number>(editing?.stock ?? 0);
   const [threshold, setThreshold] = useState<number>(editing?.low_stock_threshold ?? 5);
   const [notes, setNotes] = useState(editing?.notes ?? "");
-  const [project, setProject] = useState(editing?.project ?? "");
   const [busy, setBusy] = useState(false);
 
-  // Reset when opening
   const reset = () => {
     setName(editing?.name ?? "");
     setCode(editing?.code ?? initialCode ?? generateCode());
@@ -50,7 +46,6 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, i
     setStock(editing?.stock ?? 0);
     setThreshold(editing?.low_stock_threshold ?? 5);
     setNotes(editing?.notes ?? "");
-    setProject(editing?.project ?? "");
   };
 
   const handleOpen = (o: boolean) => {
@@ -59,30 +54,58 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, i
   };
 
   const save = async () => {
-    const r = schema.safeParse({ name, code, unit, stock, low_stock_threshold: threshold, notes, project });
+    const r = schema.safeParse({ name, code, unit, stock, low_stock_threshold: threshold, notes });
     if (!r.success) { toast.error(r.error.errors[0].message); return; }
+    
     setBusy(true);
     try {
-      if (editing) {
+      // 1. Check if a supply with this QR code already exists (Lumping logic)
+      const { data: existing } = await supabase
+        .from("supplies")
+        .select("id, stock, name")
+        .eq("code", code)
+        .maybeSingle();
+
+      if (existing && !editing) {
+        // 2. Add to existing supply stock instead of creating a new one
+        const newStock = (existing.stock || 0) + stock;
+        const { error: updateError } = await supabase
+          .from("supplies")
+          .update({ stock: newStock })
+          .eq("id", existing.id);
+
+        if (updateError) throw updateError;
+
+        await supabase.from("transactions").insert({
+          user_id: user?.id,
+          supply_id: existing.id,
+          type: "in",
+          quantity: stock,
+        });
+
+        toast.success(`Added ${stock} to existing ${existing.name}`);
+      } else if (editing) {
+        // 3. Standard Edit
         const { error } = await supabase.from("supplies").update({
           name, code, unit, stock, low_stock_threshold: threshold,
-          notes: notes || null, project: project.trim() || null,
+          notes: notes || null,
         }).eq("id", editing.id);
         if (error) throw error;
         toast.success("Supply updated");
       } else {
+        // 4. Create New Global Supply
         const { data: created, error } = await supabase.from("supplies").insert({
-          user_id: null, name, code, unit, stock, low_stock_threshold: threshold,
-          notes: notes || null, project: project.trim() || null,
+          user_id: user?.id, name, code, unit, stock, low_stock_threshold: threshold,
+          notes: notes || null,
         }).select().single();
+        
         if (error) throw error;
         if (stock > 0 && created) {
           await supabase.from("transactions").insert({
-            user_id: null, supply_id: created.id,
-            type: "in", quantity: stock, project: project.trim() || null,
+            user_id: user?.id, supply_id: created.id, type: "in", quantity: stock 
           });
         }
-        toast.success("Supply added");
+        toast.success("New supply registered");
       }
       onOpenChange(false);
     } catch (e: any) {
@@ -94,22 +117,22 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, i
     <Dialog open={open} onOpenChange={handleOpen}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit Supply" : "Add Supply"}</DialogTitle>
+          <DialogTitle className="text-slate-900">{editing ? "Edit Supply" : "Add Supply"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-4 py-2 text-slate-700">
           <div>
-            <Label>Name</Label>
-            <Input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. A4 Bond Paper" />
+            <Label className="text-slate-900 font-semibold">Name</Label>
+            <Input className="border-slate-300 focus:border-blue-500" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. A4 Bond Paper" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Code (QR)</Label>
-              <Input value={code} onChange={e=>setCode(e.target.value)} />
+              <Label className="text-slate-900 font-semibold">Code (QR)</Label>
+              <Input className="bg-slate-50 border-slate-300 font-mono" value={code} onChange={e=>setCode(e.target.value)} />
             </div>
             <div>
-              <Label>Unit</Label>
+              <Label className="text-slate-900 font-semibold">Unit</Label>
               <Select value={unit} onValueChange={setUnit}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="border-slate-300"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {units.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
                 </SelectContent>
@@ -118,33 +141,24 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, i
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Initial Stock</Label>
-              <Input type="number" min={0} value={stock} onChange={e=>setStock(parseInt(e.target.value)||0)} />
+              <Label className="text-slate-900 font-semibold">Initial Stock</Label>
+              <Input type="number" className="border-slate-300" value={stock} onChange={e=>setStock(parseInt(e.target.value)||0)} />
             </div>
             <div>
-              <Label>Low-stock at</Label>
-              <Input type="number" min={0} value={threshold} onChange={e=>setThreshold(parseInt(e.target.value)||0)} />
+              <Label className="text-slate-900 font-semibold">Low-stock at</Label>
+              <Input type="number" className="border-slate-300" value={threshold} onChange={e=>setThreshold(parseInt(e.target.value)||0)} />
             </div>
           </div>
           <div>
-            <Label>Project (optional)</Label>
-            <Select value={project || "__none__"} onValueChange={(v)=>setProject(v === "__none__" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">No project</SelectItem>
-                {projects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-1">Default project this supply belongs to. Manage the list in Settings.</p>
-          </div>
-          <div>
-            <Label>Notes</Label>
-            <Textarea value={notes ?? ""} onChange={e=>setNotes(e.target.value)} rows={2} />
+            <Label className="text-slate-900 font-semibold">Notes</Label>
+            <Textarea className="border-slate-300" value={notes ?? ""} onChange={e=>setNotes(e.target.value)} rows={2} />
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={()=>onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
+        <DialogFooter className="bg-slate-50 -mx-6 -mb-6 p-4 rounded-b-lg border-t border-slate-200">
+          <Button variant="outline" className="text-slate-600 border-slate-300" onClick={()=>onOpenChange(false)}>Cancel</Button>
+          <Button onClick={save} disabled={busy} className="bg-blue-600 hover:bg-blue-700">
+            {busy ? "Saving…" : "Save Supply"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
