@@ -15,13 +15,16 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
+  projects: string[];
 };
 
-export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit }: Props) => {
+export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, projects }: Props) => {
   const { user } = useAuth();
   const [list, setList] = useState<string[]>(units);
   const [def, setDef] = useState<string>(defaultUnit);
   const [add, setAdd] = useState("");
+  const [projList, setProjList] = useState<string[]>(projects);
+  const [addProj, setAddProj] = useState("");
   const [busy, setBusy] = useState(false);
 
   const addUnit = () => {
