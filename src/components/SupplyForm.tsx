@@ -126,6 +126,11 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode
             </div>
           </div>
           <div>
+            <Label>Project (optional)</Label>
+            <Input value={project} onChange={e=>setProject(e.target.value)} placeholder="e.g. Marketing Campaign Q3" />
+            <p className="text-xs text-muted-foreground mt-1">Default project this supply belongs to.</p>
+          </div>
+          <div>
             <Label>Notes</Label>
             <Textarea value={notes ?? ""} onChange={e=>setNotes(e.target.value)} rows={2} />
           </div>
