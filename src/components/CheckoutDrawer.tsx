@@ -21,19 +21,30 @@ const PRESET_QUANTITIES = [1, 2, 5, 10, 25];
 export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
   const [feedback, setFeedback] = useState<"ok" | "err" | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
-  const [last, setLast] = useState<{ name: string; stock: number; unit: string; qty: number } | null>(null);
+  const [last, setLast] = useState<{ name: string; stock: number; unit: string; qty: number; project: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [prefs, setPrefs] = useState(() => getFeedbackPrefs());
   const [qty, setQty] = useState(1);
+  const [project, setProject] = useState("");
+
+  // Project suggestions sourced from the catalog
+  const knownProjects = useMemo(() => {
+    const set = new Set<string>();
+    supplies.forEach(s => { if (s.project) set.add(s.project); });
+    return Array.from(set).sort();
+  }, [supplies]);
 
   useEffect(() => { setFeedbackPrefs(prefs); }, [prefs]);
 
   useEffect(() => {
-    if (!open) { setPending(null); setFeedback(null); setLast(null); setQty(1); }
+    if (!open) { setPending(null); setFeedback(null); setLast(null); setQty(1); setProject(""); }
   }, [open]);
 
   useEffect(() => {
-    if (pending) setQty(1);
+    if (pending) {
+      setQty(1);
+      setProject(pending.supply.project ?? "");
+    }
   }, [pending]);
 
   const flash = (kind: "ok" | "err") => {
