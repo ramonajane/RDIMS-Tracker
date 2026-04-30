@@ -164,25 +164,29 @@ const Index = () => {
             <ShoppingCart className="h-5 w-5 mr-2" /> Checkout
           </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="lg" variant="secondary" className="flex-1 min-w-[160px] shadow-md">
-                <Plus className="h-5 w-5 mr-2" /> Stock In <ChevronDown className="h-4 w-4 ml-1 opacity-70" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={()=>setManualIn(true)}>
-                <Pencil className="h-4 w-4 mr-2" /> Manually add a supply
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={()=>setScanIn(true)}>
-                <ScanLine className="h-4 w-4 mr-2" /> Scan for stock-in
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {user && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="lg" variant="secondary" className="flex-1 min-w-[160px] shadow-md">
+                    <Plus className="h-5 w-5 mr-2" /> Stock In <ChevronDown className="h-4 w-4 ml-1 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={()=>setManualIn(true)}>
+                    <Pencil className="h-4 w-4 mr-2" /> Manually add a supply
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={()=>setScanIn(true)}>
+                    <ScanLine className="h-4 w-4 mr-2" /> Scan for stock-in
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          <Button onClick={()=>{ setEditing(null); setFormOpen(true); }} size="lg" variant="outline" className="shadow-sm">
-            <Plus className="h-5 w-5 mr-2" /> New Supply
-          </Button>
+              <Button onClick={()=>{ setEditing(null); setFormOpen(true); }} size="lg" variant="outline" className="shadow-sm">
+                <Plus className="h-5 w-5 mr-2" /> New Supply
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Search + filter */}
