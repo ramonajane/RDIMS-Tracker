@@ -22,7 +22,7 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
   const [pending, setPending] = useState<Pending | null>(null);
   const [last, setLast] = useState<{ name: string; stock: number; unit: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [prefs, setPrefs] = useState(getFeedbackPrefs());
+  const [prefs, setPrefs] = useState(() => getFeedbackPrefs());
 
   useEffect(() => { setFeedbackPrefs(prefs); }, [prefs]);
 
@@ -125,22 +125,24 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
 
           {/* Feedback prefs */}
           <div className="max-w-sm mx-auto flex items-center justify-center gap-5 text-sm">
-            <label className="flex items-center gap-2 cursor-pointer">
+            <div className="flex items-center gap-2">
               <Volume2 className="h-4 w-4 text-muted-foreground" />
               <Switch
+                id="pref-sound"
                 checked={prefs.sound}
                 onCheckedChange={(v) => setPrefs((p) => ({ ...p, sound: v }))}
               />
-              <span>Beep</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
+              <Label htmlFor="pref-sound" className="cursor-pointer">Beep</Label>
+            </div>
+            <div className="flex items-center gap-2">
               <Vibrate className="h-4 w-4 text-muted-foreground" />
               <Switch
+                id="pref-vibrate"
                 checked={prefs.vibrate}
                 onCheckedChange={(v) => setPrefs((p) => ({ ...p, vibrate: v }))}
               />
-              <Label className="cursor-pointer">Vibrate</Label>
-            </label>
+              <Label htmlFor="pref-vibrate" className="cursor-pointer">Vibrate</Label>
+            </div>
           </div>
 
           {/* Confirmation card */}
