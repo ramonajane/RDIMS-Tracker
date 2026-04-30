@@ -118,7 +118,7 @@ const Index = () => {
             <div className="min-w-0">
               <h1 className="font-bold text-lg sm:text-xl truncate">RDIMS Office Supplies Tracker</h1>
               <p className="text-xs text-primary-foreground/70 truncate">
-                {user ? user.email : "Guest — shared inventory"}
+                {user ? user.email : "Guest — checkout only"}
               </p>
             </div>
           </div>
