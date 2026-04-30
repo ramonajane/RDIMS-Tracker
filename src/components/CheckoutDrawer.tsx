@@ -75,11 +75,19 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
     if (!pending) return;
     const finalQty = Math.min(qty, pending.previousStock);
     if (finalQty <= 0) { toast.error("Quantity must be at least 1"); return; }
+    const trimmedProject = project.trim();
+    if (!trimmedProject) { toast.error("Please indicate which project this supply is for"); return; }
     setBusy(true);
     try {
-      await adjustStock(pending.supply, -finalQty, "out");
-      setLast({ name: pending.supply.name, stock: pending.previousStock - finalQty, unit: pending.supply.unit, qty: finalQty });
-      toast.success(`Checked out ${finalQty} ${pending.supply.unit} of ${pending.supply.name}`);
+      await adjustStock(pending.supply, -finalQty, "out", trimmedProject);
+      setLast({
+        name: pending.supply.name,
+        stock: pending.previousStock - finalQty,
+        unit: pending.supply.unit,
+        qty: finalQty,
+        project: trimmedProject,
+      });
+      toast.success(`Checked out ${finalQty} ${pending.supply.unit} of ${pending.supply.name} for ${trimmedProject}`);
       setPending(null);
     } catch (e: any) {
       beepError(); toast.error(e.message ?? "Checkout failed");
@@ -94,7 +102,7 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
     if (!supply) { toast.error("Could not find item to undo"); return; }
     setBusy(true);
     try {
-      await adjustStock(supply, last.qty, "in");
+      await adjustStock(supply, last.qty, "in", last.project);
       toast.success(`Undid checkout — ${last.name} restored`);
       setLast(null);
     } catch (e: any) { toast.error(e.message ?? "Undo failed"); }
