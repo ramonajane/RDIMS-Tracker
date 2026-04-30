@@ -39,28 +39,33 @@ const Index = () => {
   const [scanIn, setScanIn] = useState(false);
   const [qrFor, setQrFor] = useState<Supply | null>(null);
 
-  useEffect(() => { if (!loading && !user) nav("/auth", { replace: true }); }, [user, loading, nav]);
+  // Guests are allowed: no redirect to /auth.
 
   // Initial fetch + ensure settings row
   useEffect(() => {
-    if (!user) return;
+    if (loading) return;
     (async () => {
-      const { data: sup } = await supabase.from("supplies").select("*").order("created_at", { ascending: false });
+      const supQuery = supabase.from("supplies").select("*").order("created_at", { ascending: false });
+      const { data: sup } = await (user ? supQuery.eq("user_id", user.id) : supQuery.is("user_id", null));
       setSupplies(sup ?? []);
-      const { data: st } = await supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle();
-      if (!st) {
-        await supabase.from("user_settings").insert({ user_id: user.id });
-      } else {
-        setUnits(st.units); setDefaultUnit(st.default_unit);
+
+      if (user) {
+        const { data: st } = await supabase.from("user_settings").select("*").eq("user_id", user.id).maybeSingle();
+        if (!st) {
+          await supabase.from("user_settings").insert({ user_id: user.id });
+        } else {
+          setUnits(st.units); setDefaultUnit(st.default_unit);
+        }
       }
     })();
-  }, [user]);
+  }, [user, loading]);
 
   // Realtime subscription
   useEffect(() => {
-    if (!user) return;
+    if (loading) return;
+    const filter = user ? `user_id=eq.${user.id}` : `user_id=is.null`;
     const ch = supabase.channel("supplies-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "supplies", filter: `user_id=eq.${user.id}` },
+      .on("postgres_changes", { event: "*", schema: "public", table: "supplies", filter },
         (payload) => {
           setSupplies(prev => {
             if (payload.eventType === "INSERT") return [payload.new as Supply, ...prev];
@@ -68,14 +73,16 @@ const Index = () => {
             if (payload.eventType === "DELETE") return prev.filter(s => s.id !== (payload.old as Supply).id);
             return prev;
           });
-        })
-      .on("postgres_changes", { event: "*", schema: "public", table: "user_settings", filter: `user_id=eq.${user.id}` },
+        });
+    if (user) {
+      ch.on("postgres_changes", { event: "*", schema: "public", table: "user_settings", filter: `user_id=eq.${user.id}` },
         (payload) => {
           if (payload.new) { setUnits((payload.new as any).units); setDefaultUnit((payload.new as any).default_unit); }
-        })
-      .subscribe();
+        });
+    }
+    ch.subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [user]);
+  }, [user, loading]);
 
   const filtered = useMemo(() => {
     let list = supplies;
