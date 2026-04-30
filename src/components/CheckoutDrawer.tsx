@@ -317,10 +317,10 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies }: Props) => {
               <div className="space-y-2.5 pt-1">
                 <button
                   onClick={confirmCheckout}
-                  disabled={busy}
-                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-base transition-colors disabled:opacity-50 shadow-lg shadow-blue-100"
+                  disabled={busy || !project.trim()}
+                  className="w-full py-4 rounded-2xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-base transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-100"
                 >
-                  {busy ? "Saving…" : "Add to cart"}
+                  {busy ? "Saving…" : project.trim() ? "Confirm checkout" : "Enter project to continue"}
                 </button>
                 <button
                   onClick={cancelPending}
