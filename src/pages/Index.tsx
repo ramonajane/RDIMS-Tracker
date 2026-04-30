@@ -231,17 +231,27 @@ const Index = () => {
                     <span className="text-sm text-muted-foreground">{s.unit}</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Low at ≤ {s.low_stock_threshold}</p>
+                  {s.project && (
+                    <p className="text-xs mt-1">
+                      <span className="text-muted-foreground">Project: </span>
+                      <span className="font-medium text-foreground">{s.project}</span>
+                    </p>
+                  )}
                   {s.notes && <p className="text-xs mt-2 line-clamp-2 text-muted-foreground">{s.notes}</p>}
                   <div className="flex gap-1 mt-3">
                     <Button size="sm" variant="outline" className="flex-1" onClick={()=>setQrFor(s)}>
                       <QrCode className="h-4 w-4 mr-1" /> QR
                     </Button>
-                    <Button size="sm" variant="outline" className="flex-1" onClick={()=>{ setEditing(s); setFormOpen(true); }}>
-                      <Pencil className="h-4 w-4 mr-1" /> Edit
-                    </Button>
-                    <Button size="icon" variant="outline" onClick={()=>removeSupply(s)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {user && (
+                      <>
+                        <Button size="sm" variant="outline" className="flex-1" onClick={()=>{ setEditing(s); setFormOpen(true); }}>
+                          <Pencil className="h-4 w-4 mr-1" /> Edit
+                        </Button>
+                        <Button size="icon" variant="outline" onClick={()=>removeSupply(s)}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </Card>
               );
