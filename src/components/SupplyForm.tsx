@@ -31,7 +31,7 @@ type Props = {
   editing?: Supply | null;
 };
 
-export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode, editing }: Props) => {
+export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, initialCode, editing }: Props) => {
   const { user } = useAuth();
   const [name, setName] = useState(editing?.name ?? "");
   const [code, setCode] = useState(editing?.code ?? initialCode ?? generateCode());
