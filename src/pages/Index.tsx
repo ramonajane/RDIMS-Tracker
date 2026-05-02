@@ -327,7 +327,6 @@ const Index = () => {
         canManage={!!user}
         onEdit={(s)=>{ setBreakdownGroup(null); setEditing(s); setFormOpen(true); }}
         onDelete={(s)=>removeSupply(s)}
-        onShowQR={(s)=>setQrFor(s)}
       />
 
       <Dialog open={!!qrFor} onOpenChange={(o)=>{ if(!o) setQrFor(null); }}>

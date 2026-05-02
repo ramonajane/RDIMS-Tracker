@@ -36,16 +36,24 @@ export const SupplyBreakdownDialog = ({ group, onOpenChange, canManage, onEdit, 
         </DialogHeader>
         {group && (
           <div className="space-y-4">
-            <div className="rounded-lg bg-muted/40 border p-3 flex items-baseline justify-between">
-              <div>
+            <div className="rounded-lg bg-muted/40 border p-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Total stock</p>
                 <p className="text-3xl font-bold text-primary mt-1">
                   {group.totalStock} <span className="text-base font-normal text-muted-foreground">{group.unit}</span>
                 </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {group.members.length} project entr{group.members.length === 1 ? "y" : "ies"}
+                  {group.mixedUnits && <span className="text-warning ml-2">· mixed units</span>}
+                </p>
               </div>
-              <div className="text-right text-xs text-muted-foreground">
-                <p>{group.members.length} project entr{group.members.length === 1 ? "y" : "ies"}</p>
-                {group.mixedUnits && <p className="text-warning mt-1">Mixed units</p>}
+              <div className="flex flex-col items-center gap-1 shrink-0">
+                <SupplyQR code={group.representativeCode} size={96} />
+                <p className="text-[10px] font-mono text-muted-foreground truncate max-w-[110px]">{group.representativeCode}</p>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs"
+                  onClick={()=>downloadQR(group.representativeCode, group.name)}>
+                  <QrCode className="h-3 w-3 mr-1" /> Download
+                </Button>
               </div>
             </div>
 
