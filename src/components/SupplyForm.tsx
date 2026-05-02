@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 
@@ -18,7 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 import { toast } from "sonner";
 
-import { generateCode, Supply } from "@/lib/inventory";
+import { generateCode, getCodeForName, Supply } from "@/lib/inventory";
 
 import { z } from "zod";
 
@@ -83,6 +83,25 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, i
   const [project, setProject] = useState(editing?.project ?? "");
 
   const [busy, setBusy] = useState(false);
+  const [codeShared, setCodeShared] = useState(false);
+
+  // Auto-sync code with any existing supply that shares this name
+  useEffect(() => {
+    let cancelled = false;
+    const trimmed = name.trim();
+    if (!trimmed) { setCodeShared(false); return; }
+    if (editing && trimmed.toLowerCase() === editing.name.trim().toLowerCase()) {
+      setCodeShared(false);
+      return;
+    }
+    const t = setTimeout(async () => {
+      const existing = await getCodeForName(trimmed);
+      if (cancelled) return;
+      if (existing) { setCode(existing); setCodeShared(true); }
+      else { setCodeShared(false); }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [name, editing]);
 
 
 
@@ -210,7 +229,13 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, projects, i
 
               <Label>Code (QR)</Label>
 
-              <Input value={code} onChange={e=>setCode(e.target.value)} />
+              <Input value={code} onChange={e=>setCode(e.target.value)} readOnly={codeShared} className={codeShared ? "bg-muted font-mono text-xs" : "font-mono text-xs"} />
+
+              {codeShared && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Shared QR with existing "{name.trim()}" supplies.
+                </p>
+              )}
 
             </div>
 
