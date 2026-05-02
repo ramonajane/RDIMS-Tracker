@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Pencil, Trash2, QrCode, Package2 } from "lucide-react";
+import { SupplyQR, downloadQR } from "@/components/SupplyQR";
 import type { Supply } from "@/lib/inventory";
 
 export type SupplyGroup = {
@@ -21,10 +22,9 @@ type Props = {
   canManage: boolean;
   onEdit: (s: Supply) => void;
   onDelete: (s: Supply) => void;
-  onShowQR: (s: Supply) => void;
 };
 
-export const SupplyBreakdownDialog = ({ group, onOpenChange, canManage, onEdit, onDelete, onShowQR }: Props) => {
+export const SupplyBreakdownDialog = ({ group, onOpenChange, canManage, onEdit, onDelete }: Props) => {
   return (
     <Dialog open={!!group} onOpenChange={(o)=>{ if (!o) onOpenChange(false); }}>
       <DialogContent className="max-w-lg">
