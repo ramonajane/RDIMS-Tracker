@@ -68,21 +68,16 @@ export const SupplyBreakdownDialog = ({ group, onOpenChange, canManage, onEdit, 
                         {out ? "Out" : low ? "Low" : "OK"}
                       </Badge>
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button size="icon" variant="outline" onClick={()=>onShowQR(m)} title="QR">
-                        <QrCode className="h-4 w-4" />
-                      </Button>
-                      {canManage && (
-                        <>
-                          <Button size="icon" variant="outline" onClick={()=>onEdit(m)} title="Edit">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button size="icon" variant="outline" onClick={()=>onDelete(m)} title="Delete">
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                    {canManage && (
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="icon" variant="outline" onClick={()=>onEdit(m)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="outline" onClick={()=>onDelete(m)} title="Delete">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
