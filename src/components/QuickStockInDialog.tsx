@@ -32,22 +32,42 @@ export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit, pro
     if (qty <= 0) { toast.error("Quantity must be > 0"); return; }
     setBusy(true);
     try {
-      // Find by code in the shared catalog
-      const { data: existing } = await supabase
-        .from("supplies").select("*").eq("code", code.trim()).maybeSingle();
-      if (existing) {
-        const newStock = existing.stock + qty;
-        const { error } = await supabase.from("supplies").update({ stock: newStock }).eq("id", existing.id);
+      const trimmedProject = project.trim() || null;
+      // Find any existing supply with this code (shared QR across projects)
+      const { data: existingRows } = await supabase
+        .from("supplies").select("*").eq("code", code.trim());
+      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+
+      // If we have a project, prefer the row matching that project; else fall back to any
+      const projectMatch = existingRows?.find(
+        r => (r.project ?? null) === trimmedProject
+      );
+
+      if (projectMatch) {
+        const newStock = projectMatch.stock + qty;
+        const { error } = await supabase.from("supplies").update({ stock: newStock }).eq("id", projectMatch.id);
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: existing.id, type: "in", quantity: qty, project: project || existing.project || null });
-        toast.success(`+${qty} ${existing.unit} of ${existing.name}`);
-      } else {
-        if (!name.trim()) { toast.error("Name required for new supply"); setBusy(false); return; }
+        await supabase.from("transactions").insert({ user_id: null, supply_id: projectMatch.id, type: "in", quantity: qty, project: trimmedProject });
+        toast.success(`+${qty} ${projectMatch.unit} of ${projectMatch.name}`);
+      } else if (existing) {
+        // Same supply name exists but for other projects — create a new row reusing the shared code
         const { data: created, error } = await supabase.from("supplies")
-          .insert({ user_id: null, name: name.trim(), code: code.trim(), unit, stock: qty, project: project || null })
+          .insert({ user_id: null, name: existing.name, code: existing.code, unit: existing.unit, stock: qty, project: trimmedProject })
           .select().single();
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty, project: project || null });
+        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty, project: trimmedProject });
+        toast.success(`Added ${existing.name} for ${trimmedProject ?? "no project"} (+${qty})`);
+      } else {
+        if (!name.trim()) { toast.error("Name required for new supply"); setBusy(false); return; }
+        // Brand new supply — but if name matches an existing group, reuse that shared code
+        const { getCodeForName } = await import("@/lib/inventory");
+        const sharedCode = await getCodeForName(name.trim());
+        const finalCode = sharedCode ?? code.trim();
+        const { data: created, error } = await supabase.from("supplies")
+          .insert({ user_id: null, name: name.trim(), code: finalCode, unit, stock: qty, project: trimmedProject })
+          .select().single();
+        if (error) throw error;
+        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty, project: trimmedProject });
         toast.success(`Added ${name} (+${qty})`);
       }
       reset();
