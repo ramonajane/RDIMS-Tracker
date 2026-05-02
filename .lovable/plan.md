@@ -1,70 +1,69 @@
+# One QR per supply (shared across projects)
+
 ## Goal
+Every supply row that shares the same name uses the **same QR code**. Scanning that QR brings up the grouped item; the project is chosen at checkout time (existing flow). The dashboard card and the breakdown dialog show that same single QR.
 
-Two related changes:
+## Behavior
 
-1. **Projects become a managed dropdown** (like units) — instead of a free-text input on supply forms and checkout, users pick from a curated list managed in Settings.
-2. **Supplies are grouped by name** in the dashboard. Identical supplies (e.g. all "A4 Bond Paper" entries across projects) appear as **one card** with one QR and a combined total stock. Clicking a card opens a popup showing the per-project breakdown (stock per project, project totals).
+- **Dashboard card**: "QR" button shows the group's shared QR (same image for every project under that name).
+- **Breakdown dialog**: Per-project rows no longer have a "QR" button — there's just one QR per supply, shown from the card. (Avoids the misleading impression that each project has its own QR.)
+- **Scanning to checkout**: Works as today — the scanner finds *a* supply row with that code; the user picks the project in the popup; stock is decremented from the row matching that project (falls back to the representative row if no exact match).
+- **Stock-in by scan**: Same code resolves to the supply group; user picks (or creates) a project. If the picked project already has a row, increment it; otherwise create a new row reusing the shared code.
+- **Adding a new supply (form)**: If the typed name matches an existing supply, the code field auto-fills with that group's shared code and becomes read-only. New names get a freshly generated code.
+- **Editing**: Renaming a supply re-syncs its code to the matching group (or generates a new one if the new name is unique).
 
----
+## Technical changes
 
-## 1. Project list management
+### `src/lib/inventory.ts`
+- Add helper `getCodeForName(name: string): Promise<string | null>` — returns the existing shared code for any row whose lowercased trimmed name matches, or `null`.
+- Update `adjustStock(supply, delta, type, project?)` to optionally route the decrement to the row matching `project` within the same name-group:
+  - On checkout (`type==="out"`), look up `supplies` where `lower(name)=lower(supply.name)` and `project=trimmedProject`. If found, decrement that row; else decrement the scanned `supply` (current behavior). Transaction log records `supply_id` of the actual row decremented.
 
-**Database (migration):** Add a `projects` text[] column to `user_settings` with a sensible default (`ARRAY[]::text[]`).
+### `src/components/SupplyForm.tsx`
+- On name change (debounced or on blur), call `getCodeForName`. If a code exists, set `code` to it and disable the input with a hint: "Shared QR with existing '<name>' supplies."
+- On save, if `editing` and the name changed, re-resolve the code the same way before submitting.
 
-**Settings dialog (`SettingsDialog.tsx`):** Add a second section "Projects" mirroring the existing Units UI — chips with remove buttons + an "Add project" input. Save persists both `units` and `projects`.
+### `src/components/QuickStockInDialog.tsx` and `src/components/ScanStockInDialog.tsx`
+- After resolving the scanned/typed code:
+  - If a row exists with the same code AND the chosen project, increment that row.
+  - Else create a new row reusing the shared code with the chosen project.
+- For manual entry, when the user types a name for a brand-new code, also call `getCodeForName(name)` and reuse if found.
 
-**Index (`Index.tsx`):**
-- Load `projects` from `user_settings` alongside `units`.
-- For guests (no logged-in user), derive the project list from existing supplies/transactions so guests still see a populated dropdown.
-- Pass `projects` down to `SupplyForm`, `QuickStockInDialog`, `ScanStockInDialog`, and `CheckoutDrawer`.
+### `src/pages/Index.tsx`
+- The card's QR button already opens `qrFor={g.members[0]}`. Since all members share the code now, this is correct — no change needed beyond a label tweak ("Shared QR for all projects").
 
-**Forms (`SupplyForm.tsx`, `QuickStockInDialog.tsx`, `ScanStockInDialog.tsx`):** Replace the free-text Project input with a `Select` populated from `projects`. Keep it required at checkout, optional on stock-in/new supply (same as today).
+### `src/components/SupplyBreakdownDialog.tsx`
+- Remove the per-row QR button (kept Edit/Delete for managers). Add a single "Show shared QR" button in the dialog header area instead, wired through a new `onShowGroupQR` prop.
 
-**Checkout (`CheckoutDrawer.tsx`):** Replace the text input + datalist + chips with a `Select` dropdown of projects. Pre-select the supply's default project if present.
+### One-time data migration (SQL)
+Existing rows have distinct codes per project. Sync them so all rows with the same lowercased name share the oldest row's code:
 
----
+```sql
+WITH ranked AS (
+  SELECT id, code,
+    FIRST_VALUE(code) OVER (
+      PARTITION BY lower(trim(name))
+      ORDER BY created_at ASC
+    ) AS shared_code
+  FROM public.supplies
+)
+UPDATE public.supplies s
+SET code = r.shared_code
+FROM ranked r
+WHERE s.id = r.id AND s.code <> r.shared_code;
+```
 
-## 2. Group supplies by name with per-project breakdown
+(No schema change — `code` stays non-unique, which it already is.)
 
-**Approach:** Keep the database schema as-is (one row per supply+project combo). Do the grouping in the UI.
+## Out of scope
+- Merging duplicate rows that share both name AND project (none should exist; if they do, they remain as-is and breakdown shows both).
+- Changing how transactions are stored.
 
-**Index (`Index.tsx`):**
-- Build a `groupedSupplies` memo that buckets `supplies` by a normalized name key (case-insensitive, trimmed) and aggregates:
-  - `totalStock` = sum of `stock` across the group
-  - `unit` = unit of the first member (assume consistent; show a small warning badge if mixed)
-  - `lowThreshold` = sum of thresholds, used for the Low/OK badge
-  - `projects` = array of `{ project, stock, unit, supplyId, code }`
-  - `representativeCode` = stable code used for the group's QR. Use the code of the lowest-`created_at` member so the QR is deterministic.
-- Stats (`Items` count) now reflects unique supply names, not row count.
-- Render one card per group: name, total stock, unit, low/out badge, single QR button using the representative code.
-- Clicking the **card body** opens a new "Breakdown" dialog (described below). The QR button keeps its current behavior but uses the group code.
-
-**New `SupplyBreakdownDialog` component:**
-- Props: the group object + `user` (for showing edit/delete on each row).
-- Body: a table/list — one row per project showing project name, stock, unit, low badge, and (for logged-in users) Edit/Delete actions wired to the existing handlers per underlying supply id.
-- Footer shows total + "Generate QR" button reusing the group's representative code.
-
-**Search/filter:** Update the existing search to match against the group (any member's name/code/notes) and the low-stock filter to use the group's aggregate.
-
-**Scanner compatibility:** A scanned QR still resolves to a single underlying `supplies` row by `code` — no change to checkout logic. The group QR resolves to the representative member, so checking out from a group QR will decrement that one row. Acceptable because the project picker at checkout determines accounting; if the scanned member's project differs, we fall back to the representative row's stock. (If you want scans to pick the row matching the chosen project, say so and we'll add that lookup.)
-
----
-
-## Files to change
-
-- `supabase/migrations/<new>.sql` — add `projects` column to `user_settings`
-- `src/components/SettingsDialog.tsx` — projects management UI + save
-- `src/pages/Index.tsx` — load projects, group supplies, breakdown dialog wiring, stats
-- `src/components/SupplyBreakdownDialog.tsx` — new component
-- `src/components/CheckoutDrawer.tsx` — project Select instead of text input
-- `src/components/SupplyForm.tsx` — project Select
-- `src/components/QuickStockInDialog.tsx` — project Select
-- `src/components/ScanStockInDialog.tsx` — project Select (if it exposes project)
-
-No changes needed to `src/lib/inventory.ts` or the `supplies`/`transactions` schemas.
-
----
-
-## Open question
-
-When a guest checks out by scanning a group QR and picks a project that has its own row, should the system **automatically decrement that project's row** (so per-project stock stays accurate), or always decrement the representative row? Default in this plan: decrement the representative row. Tell me if you want auto-routing to the matching project row.
+## Files touched
+- `supabase/migrations/<new>.sql` (data sync only)
+- `src/lib/inventory.ts`
+- `src/components/SupplyForm.tsx`
+- `src/components/QuickStockInDialog.tsx`
+- `src/components/ScanStockInDialog.tsx`
+- `src/components/SupplyBreakdownDialog.tsx`
+- `src/pages/Index.tsx` (minor: pass shared-QR handler, remove per-row QR prop)
