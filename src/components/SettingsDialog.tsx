@@ -154,7 +154,7 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, project
             )}
           </div>
         </div>
-        <div className="flex justify-end gap-2 pt-2"></div>
+        <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={()=>onOpenChange(false)}>Cancel</Button>
           <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
         </div>
