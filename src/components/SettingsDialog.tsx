@@ -131,8 +131,30 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, project
               <Button variant="outline" onClick={addProject}>Add</Button>
             </div>
           </div>
+          <div className="border-t pt-4">
+            <Label className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4" /> Live Google Sheets Sync</Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              Every stock-in and checkout is pushed to a Google Sheet in real time.
+            </p>
+            {sheetUrl ? (
+              <div className="flex gap-2 mt-3">
+                <Button variant="outline" className="flex-1" asChild>
+                  <a href={sheetUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-2" /> Open Sheet
+                  </a>
+                </Button>
+                <Button variant="outline" onClick={connectSheet} disabled={sheetBusy}>
+                  <RefreshCw className={`h-4 w-4 ${sheetBusy ? "animate-spin" : ""}`} />
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" className="w-full mt-3" onClick={connectSheet} disabled={sheetBusy}>
+                {sheetBusy ? "Creating sheet…" : "Create live-sync sheet"}
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex justify-end gap-2 pt-2">
+        <div className="flex justify-end gap-2 pt-2"></div>
           <Button variant="outline" onClick={()=>onOpenChange(false)}>Cancel</Button>
           <Button onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</Button>
         </div>
