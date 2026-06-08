@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { X } from "lucide-react";
+import { X, ExternalLink, RefreshCw, FileSpreadsheet } from "lucide-react";
+import { getSheetUrl, initSheet } from "@/lib/sheetSync";
 
 type Props = {
   open: boolean;
@@ -26,6 +27,22 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, project
   const [projList, setProjList] = useState<string[]>(projects);
   const [addProj, setAddProj] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState<string | null>(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    getSheetUrl().then(setSheetUrl);
+  }, [open]);
+
+  const connectSheet = async () => {
+    setSheetBusy(true);
+    try {
+      const url = await initSheet();
+      if (url) { setSheetUrl(url); toast.success("Google Sheet ready"); }
+      else toast.error("Could not set up sheet");
+    } finally { setSheetBusy(false); }
+  };
 
   const addUnit = () => {
     const v = add.trim().toLowerCase();
@@ -113,6 +130,28 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, project
                 onKeyDown={e => e.key === "Enter" && addProject()} />
               <Button variant="outline" onClick={addProject}>Add</Button>
             </div>
+          </div>
+          <div className="border-t pt-4">
+            <Label className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4" /> Live Google Sheets Sync</Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              Every stock-in and checkout is pushed to a Google Sheet in real time.
+            </p>
+            {sheetUrl ? (
+              <div className="flex gap-2 mt-3">
+                <Button variant="outline" className="flex-1" asChild>
+                  <a href={sheetUrl} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-2" /> Open Sheet
+                  </a>
+                </Button>
+                <Button variant="outline" onClick={connectSheet} disabled={sheetBusy}>
+                  <RefreshCw className={`h-4 w-4 ${sheetBusy ? "animate-spin" : ""}`} />
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" className="w-full mt-3" onClick={connectSheet} disabled={sheetBusy}>
+                {sheetBusy ? "Creating sheet…" : "Create live-sync sheet"}
+              </Button>
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-2 pt-2">

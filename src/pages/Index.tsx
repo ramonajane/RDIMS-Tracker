@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Supply } from "@/lib/inventory";
+import { triggerSheetSync } from "@/lib/sheetSync";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -77,6 +78,12 @@ const Index = () => {
             if (payload.eventType === "DELETE") return prev.filter(s => s.id !== (payload.old as Supply).id);
             return prev;
           });
+          // Live-sync to Google Sheets on any inventory change
+          triggerSheetSync();
+        })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "transactions" },
+        (payload) => {
+          triggerSheetSync((payload.new as any)?.id ?? null);
         });
     if (user) {
       ch.on("postgres_changes", { event: "*", schema: "public", table: "user_settings", filter: `user_id=eq.${user.id}` },
