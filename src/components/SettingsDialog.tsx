@@ -27,6 +27,22 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, project
   const [projList, setProjList] = useState<string[]>(projects);
   const [addProj, setAddProj] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState<string | null>(null);
+  const [sheetBusy, setSheetBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    getSheetUrl().then(setSheetUrl);
+  }, [open]);
+
+  const connectSheet = async () => {
+    setSheetBusy(true);
+    try {
+      const url = await initSheet();
+      if (url) { setSheetUrl(url); toast.success("Google Sheet ready"); }
+      else toast.error("Could not set up sheet");
+    } finally { setSheetBusy(false); }
+  };
 
   const addUnit = () => {
     const v = add.trim().toLowerCase();
