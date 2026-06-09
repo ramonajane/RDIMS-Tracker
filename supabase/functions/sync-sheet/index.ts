@@ -46,16 +46,15 @@ async function createSpreadsheet(): Promise<string> {
     body: JSON.stringify({
       properties: { title: `Inventory Live Sync — ${new Date().toLocaleDateString()}` },
       sheets: [
-        { properties: { title: "Inventory", gridProperties: { rowCount: 1000, columnCount: 6 } } },
+        { properties: { title: "Inventory", gridProperties: { rowCount: 1000, columnCount: 5 } } },
         { properties: { title: "Transactions", gridProperties: { rowCount: 5000, columnCount: 7 } } },
       ],
     }),
   });
   const id = created.spreadsheetId as string;
-  // Write headers
-  await gs(`/spreadsheets/${id}/values/Inventory!A1:F1?valueInputOption=RAW`, {
+  await gs(`/spreadsheets/${id}/values/Inventory!A1:E1?valueInputOption=RAW`, {
     method: "PUT",
-    body: JSON.stringify({ values: [["Supply Name", "Code", "Project", "Unit", "Stock", "Updated At"]] }),
+    body: JSON.stringify({ values: [["Supply Name", "Code", "Unit", "Stock", "Updated At"]] }),
   });
   await gs(`/spreadsheets/${id}/values/Transactions!A1:G1?valueInputOption=RAW`, {
     method: "PUT",
@@ -67,20 +66,20 @@ async function createSpreadsheet(): Promise<string> {
 
 async function syncInventory(sheetId: string) {
   const { data: supplies } = await supabase
-    .from("supplies").select("name, code, project, unit, stock, updated_at")
-    .order("name", { ascending: true }).order("project", { ascending: true });
+    .from("supplies").select("name, code, unit, stock, updated_at")
+    .order("name", { ascending: true });
   const rows = (supplies ?? []).map(s => [
-    s.name, s.code, s.project ?? "", s.unit, s.stock, s.updated_at,
+    s.name, s.code, s.unit, s.stock, s.updated_at,
   ]);
-  await gs(`/spreadsheets/${sheetId}/values/Inventory!A2:F?valueInputOption=RAW`, {
+  await gs(`/spreadsheets/${sheetId}/values/Inventory!A2:E?valueInputOption=RAW`, {
     method: "PUT",
-    body: JSON.stringify({ values: rows.length ? rows : [["", "", "", "", "", ""]] }),
+    body: JSON.stringify({ values: rows.length ? rows : [["", "", "", "", ""]] }),
   });
-  // Clear any extra trailing rows from previous syncs
-  await gs(`/spreadsheets/${sheetId}/values/Inventory!A${rows.length + 2}:F?`, {
+  await gs(`/spreadsheets/${sheetId}/values/Inventory!A${rows.length + 2}:E?`, {
     method: "POST",
   }).catch(() => {});
 }
+
 
 async function appendTransaction(sheetId: string, txId: string) {
   const { data: tx } = await supabase

@@ -9,7 +9,6 @@ export type Supply = {
   stock: number;
   low_stock_threshold: number;
   notes: string | null;
-  project: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -20,28 +19,23 @@ export const generateCode = () =>
   "RDIMS-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
 
 /**
- * Returns the shared QR code already in use for any supply whose name
- * matches (case-insensitive, trimmed). Returns null if no match.
+ * Returns the QR code for a supply with this name (case-insensitive), or null.
+ * Names are now unique across the inventory.
  */
 export async function getCodeForName(name: string): Promise<string | null> {
   const trimmed = name.trim();
   if (!trimmed) return null;
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from("supplies")
     .select("code")
     .ilike("name", trimmed)
-    .order("created_at", { ascending: true })
-    .limit(1)
     .maybeSingle();
-  if (error) return null;
   return data?.code ?? null;
 }
 
 /**
- * Adjust stock for a supply.
- * For checkouts ("out"), if a `project` is provided we route the decrement
- * to the row in the same name-group that matches that project — keeping
- * per-project stock accurate even when checking out via the shared QR.
+ * Adjust a supply's unified stock.
+ * The `project` is recorded on the transaction only (for per-project usage reporting).
  */
 export async function adjustStock(
   supply: Supply,
@@ -50,27 +44,17 @@ export async function adjustStock(
   project?: string | null,
 ) {
   const trimmedProject = project?.trim() || null;
-  let target = supply;
+  const newStock = Math.max(0, supply.stock + delta);
 
-  if (type === "out" && trimmedProject) {
-    const { data: match } = await supabase
-      .from("supplies")
-      .select("*")
-      .ilike("name", supply.name.trim())
-      .eq("project", trimmedProject)
-      .maybeSingle();
-    if (match && match.stock > 0) target = match as Supply;
-  }
-
-  const newStock = Math.max(0, target.stock + delta);
   const { error: e1 } = await supabase
     .from("supplies")
     .update({ stock: newStock })
-    .eq("id", target.id);
+    .eq("id", supply.id);
   if (e1) throw e1;
+
   const { error: e2 } = await supabase.from("transactions").insert({
     user_id: null,
-    supply_id: target.id,
+    supply_id: supply.id,
     type,
     quantity: Math.abs(delta),
     project: trimmedProject,

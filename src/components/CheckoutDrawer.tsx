@@ -28,12 +28,13 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies, projects }: Props
   const [qty, setQty] = useState(1);
   const [project, setProject] = useState("");
 
-  // Project options: union of managed list + any projects already on supplies (so guests still see options)
+  // Project options: just the managed list
   const projectOptions = useMemo(() => {
-    const set = new Set<string>(projects);
-    supplies.forEach(s => { if (s.project) set.add(s.project); });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [supplies, projects]);
+    return [...projects].sort((a, b) => a.localeCompare(b));
+  }, [projects]);
+
+
+
 
   useEffect(() => { setFeedbackPrefs(prefs); }, [prefs]);
 
@@ -44,7 +45,7 @@ export const CheckoutDrawer = ({ open, onOpenChange, supplies, projects }: Props
   useEffect(() => {
     if (pending) {
       setQty(1);
-      setProject(pending.supply.project ?? "");
+      setProject("");
     }
   }, [pending]);
 
