@@ -11,12 +11,12 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-  Package2, Plus, Search, ShoppingCart, Settings, LogOut, LogIn,
-  ScanLine, Pencil, QrCode, AlertTriangle, ChevronDown, BarChart3, Trash2,
+  Package2, Plus, Search, ShoppingCart, Settings, LogOut, LogIn,
+  ScanLine, Pencil, QrCode, AlertTriangle, ChevronDown, BarChart3, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { CheckoutDrawer } from "@/components/CheckoutDrawer";
@@ -28,429 +28,423 @@ import { SupplyQR, downloadQR } from "@/components/SupplyQR";
 import { SupplyUsageDialog } from "@/components/SupplyUsageDialog";
 
 const Index = () => {
-  const { user, loading, signOut } = useAuth();
-  const nav = useNavigate();
+  const { user, loading, signOut } = useAuth();
+  const nav = useNavigate();
 
-  const [supplies, setSupplies]         = useState<Supply[]>([]);
-  const [search, setSearch]             = useState("");
-  const [lowOnly, setLowOnly]           = useState(false);
-  const [units, setUnits]                = useState<string[]>(["piece","ream","box","pack","bottle"]);
-  const [defaultUnit, setDefaultUnit]   = useState("piece");
-  const [projects, setProjects]         = useState<string[]>([]);
+  const [supplies, setSupplies]         = useState<Supply[]>([]);
+  const [search, setSearch]             = useState("");
+  const [lowOnly, setLowOnly]           = useState(false);
+  const [units, setUnits]               = useState<string[]>(["piece","ream","box","pack","bottle"]);
+  const [defaultUnit, setDefaultUnit]   = useState("piece");
+  // ── projects is now its own top-level state ───────────────────────────
+  const [projects, setProjects]         = useState<string[]>([]);
 
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [formOpen, setFormOpen]         = useState(false);
-  const [editing, setEditing]           = useState<Supply | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [manualIn, setManualIn]         = useState(false);
-  const [scanIn, setScanIn]             = useState(false);
-  const [qrFor, setQrFor]               = useState<Supply | null>(null);
-  const [usageFor, setUsageFor]         = useState<Supply | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [formOpen, setFormOpen]         = useState(false);
+  const [editing, setEditing]           = useState<Supply | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [manualIn, setManualIn]         = useState(false);
+  const [scanIn, setScanIn]             = useState(false);
+  const [qrFor, setQrFor]               = useState<Supply | null>(null);
+  const [usageFor, setUsageFor]         = useState<Supply | null>(null);
 
-  // ── Helper: apply a user_settings row to state ────────────────────────
-  const applySettings = (st: any) => {
-    if (!st) return;
-    if (Array.isArray(st.units))    setUnits(st.units);
-    if (st.default_unit)            setDefaultUnit(st.default_unit);
-    setProjects(Array.isArray(st.projects) ? st.projects : []);
-  };
+  // ── Helper: apply a user_settings row to state ────────────────────────
+  const applySettings = (st: any) => {
+    if (!st) return;
+    if (Array.isArray(st.units))    setUnits(st.units);
+    if (st.default_unit)            setDefaultUnit(st.default_unit);
+    // projects may be null/undefined in old rows — always use an array
+    setProjects(Array.isArray(st.projects) ? st.projects : []);
+  };
 
-  // ── Core Data Fetchers ────────────────────────────────────────────────
-  // Re-fetching directly from the DB ensures alphabetical sorting stays perfect in real-time
-  const fetchSupplies = async () => {
-    const { data: sup } = await supabase
-      .from("supplies")
-      .select("*")
-      .order("name", { ascending: true });
-    setSupplies((sup ?? []) as Supply[]);
-  };
+  // ── Initial data fetch ────────────────────────────────────────────────
+  useEffect(() => {
+    if (loading) return;
+    (async () => {
+      // Supplies (shared, no user filter) - ORDER BY NAME ALPHABETICALLY
+      const { data: sup } = await supabase
+        .from("supplies")
+        .select("*")
+        .order("name", { ascending: true });
+      setSupplies((sup ?? []) as Supply[]);
 
-  const fetchSettings = async () => {
-    // If logged in, prioritize the current user's profile settings row
-    let query = supabase.from("user_settings").select("*");
-    if (user) {
-      query = query.eq("user_id", user.id);
-    }
-    
-    const { data: stData } = await query.limit(1);
+      // User settings (only for signed-in users)
+      if (user) {
+        const { data: st } = await supabase
+          .from("user_settings")
+          .select("*")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-    if (stData && stData.length > 0) {
-      applySettings(stData[0]);
-    } else if (user) {
-      // If an admin is logged in but has no configurations row yet, create it
-      const { data: newSt } = await supabase
-        .from("user_settings")
-        .insert({ user_id: user.id })
-        .select()
-        .maybeSingle();
-      if (newSt) applySettings(newSt);
-    } else {
-      // GUEST FALLBACK: Grab the first available configuration profile (the Admin's row)
-      // This allows guests to see matching projects & units instantly
-      const { data: guestFallback } = await supabase
-        .from("user_settings")
-        .select("*")
-        .limit(1);
-      if (guestFallback && guestFallback.length > 0) {
-        applySettings(guestFallback[0]);
-      }
-    }
-  };
+        if (!st) {
+          // Insert a default row, then apply defaults
+          await supabase.from("user_settings").insert({ user_id: user.id });
+        } else {
+          applySettings(st);
+        }
+      }
+    })();
+  }, [user, loading]);
 
-  // ── Initial data fetch ────────────────────────────────────────────────
-  useEffect(() => {
-    if (loading) return;
-    fetchSupplies();
-    fetchSettings();
-  }, [user, loading]);
+  // ── Realtime subscriptions ────────────────────────────────────────────
+  useEffect(() => {
+    if (loading) return;
 
-  // ── Realtime subscriptions ────────────────────────────────────────────
-  useEffect(() => {
-    if (loading) return;
+    const ch = supabase.channel("index-rt");
 
-    const ch = supabase.channel("index-rt");
+    // Supply changes
+    ch.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "supplies" },
+      (payload) => {
+        setSupplies(prev => {
+          if (payload.eventType === "INSERT") return [payload.new as Supply, ...prev];
+          if (payload.eventType === "UPDATE")
+            return prev.map(s => s.id === (payload.new as Supply).id ? payload.new as Supply : s);
+          if (payload.eventType === "DELETE")
+            return prev.filter(s => s.id !== (payload.old as Supply).id);
+          return prev;
+        });
+        triggerSheetSync();
+      }
+    );
 
-    // Supply changes -> Pull clean array state instantly for everyone
-    ch.on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "supplies" },
-      () => {
-        fetchSupplies();
-        triggerSheetSync();
-      }
-    );
+    // Transaction inserts (for sheet sync)
+    ch.on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "transactions" },
+      (payload) => {
+        triggerSheetSync((payload.new as any)?.id ?? null);
+      }
+    );
 
-    // Transaction inserts (for sheet sync)
-    ch.on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "transactions" },
-      (payload) => {
-        triggerSheetSync((payload.new as any)?.id ?? null);
-      }
-    );
+    // User settings changes — update ALL three settings fields including projects
+    if (user) {
+      ch.on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "user_settings",
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          // payload.new contains the full updated row
+          applySettings(payload.new);
+        }
+      );
+    }
 
-    // Global Settings Changes -> Removed user_id filter so updates to 
-    // projects/units propagate to guest accounts live without refresh commands
-    ch.on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "user_settings",
-      },
-      () => {
-        fetchSettings();
-      }
-    );
+    ch.subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [user, loading]);
 
-    ch.subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [user, loading]);
+  // Keep open usage dialog in sync with supply list
+  useEffect(() => {
+    if (!usageFor) return;
+    const fresh = supplies.find(s => s.id === usageFor.id);
+    if (!fresh) setUsageFor(null);
+    else if (fresh !== usageFor) setUsageFor(fresh);
+  }, [supplies, usageFor]);
 
-  // Keep open usage dialog in sync with supply list
-  useEffect(() => {
-    if (!usageFor) return;
-    const fresh = supplies.find(s => s.id === usageFor.id);
-    if (!fresh) setUsageFor(null);
-    else if (fresh !== usageFor) setUsageFor(fresh);
-  }, [supplies, usageFor]);
+  const filtered = useMemo(() => {
+    // Create a copy of the list and sort it alphabetically
+    // This ensures real-time inserts are also ordered correctly
+    let list = [...supplies].sort((a, b) => a.name.localeCompare(b.name));
+    
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(s =>
+        s.name.toLowerCase().includes(q) ||
+        s.code.toLowerCase().includes(q) ||
+        (s.notes ?? "").toLowerCase().includes(q)
+      );
+    }
+    if (lowOnly) list = list.filter(s => s.stock <= s.low_stock_threshold);
+    return list;
+  }, [supplies, search, lowOnly]);
 
-  const filtered = useMemo(() => {
-    let list = [...supplies].sort((a, b) => a.name.localeCompare(b.name));
-    
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(s =>
-        s.name.toLowerCase().includes(q) ||
-        s.code.toLowerCase().includes(q) ||
-        (s.notes ?? "").toLowerCase().includes(q)
-      );
-    }
-    if (lowOnly) list = list.filter(s => s.stock <= s.low_stock_threshold);
-    return list;
-  }, [supplies, search, lowOnly]);
+  const lowCount   = supplies.filter(s => s.stock <= s.low_stock_threshold).length;
+  const totalItems = supplies.reduce((n, s) => n + s.stock, 0);
 
-  const lowCount   = supplies.filter(s => s.stock <= s.low_stock_threshold).length;
-  const totalItems = supplies.reduce((n, s) => n + s.stock, 0);
+  const removeSupply = async (s: Supply) => {
+    if (!confirm(`Delete "${s.name}"? This also removes its history.`)) return;
+    const { error } = await supabase.from("supplies").delete().eq("id", s.id);
+    if (error) toast.error(error.message); else toast.success("Deleted");
+  };
 
-  const removeSupply = async (s: Supply) => {
-    if (!confirm(`Delete "${s.name}"? This also removes its history.`)) return;
-    const { error } = await supabase.from("supplies").delete().eq("id", s.id);
-    if (error) toast.error(error.message); else toast.success("Deleted");
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-subtle">
+        <Package2 className="h-8 w-8 text-primary animate-pulse" />
+      </div>
+    );
+  }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-subtle">
-        <Package2 className="h-8 w-8 text-primary animate-pulse" />
-      </div>
-    );
-  }
+  return (
+    <div className="min-h-screen bg-gradient-subtle">
+      {/* ── Header ── */}
+      <header className="bg-gradient-header text-primary-foreground shadow-lg">
+        <div className="max-w-6xl mx-auto px-4 py-5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-10 w-10 rounded-xl bg-primary-foreground/10 backdrop-blur flex items-center justify-center shrink-0">
+              <Package2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="font-bold text-lg sm:text-xl truncate">RDIMS Office Supplies Tracker</h1>
+              <p className="text-xs text-primary-foreground/70 truncate">
+                {user ? user.email : "Guest — checkout only"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {user && (
+              <Button
+                variant="ghost" size="icon"
+                className="text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <Settings className="h-5 w-5" />
+              </Button>
+            )}
+            {user ? (
+              <Button
+                variant="ghost" size="icon"
+                className="text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={signOut}
+                title="Sign out"
+              >
+                <LogOut className="h-5 w-5" />
+              </Button>
+            ) : (
+              <Button
+                variant="ghost" size="sm"
+                className="text-primary-foreground hover:bg-primary-foreground/10"
+                onClick={() => nav("/auth")}
+              >
+                <LogIn className="h-4 w-4 mr-1.5" /> Sign in
+              </Button>
+            )}
+          </div>
+        </div>
+      </header>
 
-  return (
-    <div className="min-h-screen bg-gradient-subtle">
-      {/* ── Header ── */}
-      <header className="bg-gradient-header text-primary-foreground shadow-lg">
-        <div className="max-w-6xl mx-auto px-4 py-5 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="h-10 w-10 rounded-xl bg-primary-foreground/10 backdrop-blur flex items-center justify-center shrink-0">
-              <Package2 className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-bold text-lg sm:text-xl truncate">RDIMS Office Supplies Tracker</h1>
-              <p className="text-xs text-primary-foreground/70 truncate">
-                {user ? user.email : "Guest — checkout only"}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {user && (
-              <Button
-                variant="ghost" size="icon"
-                className="text-primary-foreground hover:bg-primary-foreground/10"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <Settings className="h-5 w-5" />
-              </Button>
-            )}
-            {user ? (
-              <Button
-                variant="ghost" size="icon"
-                className="text-primary-foreground hover:bg-primary-foreground/10"
-                onClick={signOut}
-                title="Sign out"
-              >
-                <LogOut className="h-5 w-5" />
-              </Button>
-            ) : (
-              <Button
-                variant="ghost" size="sm"
-                className="text-primary-foreground hover:bg-primary-foreground/10"
-                onClick={() => nav("/auth")}
-              >
-                <LogIn className="h-4 w-4 mr-1.5" /> Sign in
-              </Button>
-            )}
-          </div>
-        </div>
-      </header>
+      <main className="max-w-6xl mx-auto px-4 py-6 space-y-5">
 
-      <main className="max-w-6xl mx-auto px-4 py-6 space-y-5">
+        {/* ── Stats ── */}
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Items</p>
+            <p className="text-2xl font-bold text-primary mt-1">{supplies.length}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Stock</p>
+            <p className="text-2xl font-bold text-primary mt-1">{totalItems}</p>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">Low Stock</p>
+            <p className={`text-2xl font-bold mt-1 ${lowCount > 0 ? "text-warning" : "text-primary"}`}>
+              {lowCount}
+            </p>
+          </Card>
+        </div>
 
-        {/* ── Stats ── */}
-        <div className="grid grid-cols-3 gap-3">
-          <Card className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Items</p>
-            <p className="text-2xl font-bold text-primary mt-1">{supplies.length}</p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Total Stock</p>
-            <p className="text-2xl font-bold text-primary mt-1">{totalItems}</p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">Low Stock</p>
-            <p className={`text-2xl font-bold mt-1 ${lowCount > 0 ? "text-warning" : "text-primary"}`}>
-              {lowCount}
-            </p>
-          </Card>
-        </div>
+        {/* ── Actions ── */}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={() => setCheckoutOpen(true)}
+            size="lg"
+            className="flex-1 min-w-[160px] shadow-md"
+          >
+            <ShoppingCart className="h-5 w-5 mr-2" /> Checkout
+          </Button>
 
-        {/* ── Actions ── */}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => setCheckoutOpen(true)}
-            size="lg"
-            className="flex-1 min-w-[160px] shadow-md"
-          >
-            <ShoppingCart className="h-5 w-5 mr-2" /> Checkout
-          </Button>
+          {user && (
+            <>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="lg" variant="secondary" className="flex-1 min-w-[160px] shadow-md">
+                    <Plus className="h-5 w-5 mr-2" /> Stock In
+                    <ChevronDown className="h-4 w-4 ml-1 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => setManualIn(true)}>
+                    <Pencil className="h-4 w-4 mr-2" /> Manually add a supply
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setScanIn(true)}>
+                    <ScanLine className="h-4 w-4 mr-2" /> Scan for stock-in
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          {user && (
-            <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="lg" variant="secondary" className="flex-1 min-w-[160px] shadow-md">
-                    <Plus className="h-5 w-5 mr-2" /> Stock In
-                    <ChevronDown className="h-4 w-4 ml-1 opacity-70" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem onClick={() => setManualIn(true)}>
-                    <Pencil className="h-4 w-4 mr-2" /> Manually add a supply
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setScanIn(true)}>
-                    <ScanLine className="h-4 w-4 mr-2" /> Scan for stock-in
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                onClick={() => { setEditing(null); setFormOpen(true); }}
+                size="lg"
+                variant="outline"
+                className="shadow-sm"
+              >
+                <Plus className="h-5 w-5 mr-2" /> New Supply
+              </Button>
+            </>
+          )}
+        </div>
 
-              <Button
-                onClick={() => { setEditing(null); setFormOpen(true); }}
-                size="lg"
-                variant="outline"
-                className="shadow-sm"
-              >
-                <Plus className="h-5 w-5 mr-2" /> New Supply
-              </Button>
-            </>
-          )}
-        </div>
+        {/* ── Search + filter ── */}
+        <Card className="p-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          <div className="relative flex-1 w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search by name, code, or notes…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Switch id="low" checked={lowOnly} onCheckedChange={setLowOnly} />
+            <Label htmlFor="low" className="cursor-pointer text-sm flex items-center gap-1">
+              <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Low stock only
+            </Label>
+          </div>
+        </Card>
 
-        {/* ── Search + filter ── */}
-        <Card className="p-3 flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name, code, or notes…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Switch id="low" checked={lowOnly} onCheckedChange={setLowOnly} />
-            <Label htmlFor="low" className="cursor-pointer text-sm flex items-center gap-1">
-              <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Low stock only
-            </Label>
-          </div>
-        </Card>
+        {/* ── Supply grid ── */}
+        {filtered.length === 0 ? (
+          <Card className="p-12 text-center">
+            <Package2 className="h-12 w-12 mx-auto text-muted-foreground/50" />
+            <p className="mt-3 text-muted-foreground">
+              {supplies.length === 0 ? "No supplies yet." : "No supplies match your filter."}
+            </p>
+          </Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map(s => {
+              const low = s.stock <= s.low_stock_threshold;
+              const out = s.stock === 0;
+              return (
+                <Card
+                  key={s.id}
+                  className="p-4 hover:shadow-md transition-shadow cursor-pointer"
+                  onClick={() => setUsageFor(s)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold truncate">{s.name}</h3>
+                      <p className="text-xs text-muted-foreground font-mono truncate">{s.code}</p>
+                    </div>
+                    <Badge
+                      variant={out ? "destructive" : low ? "outline" : "secondary"}
+                      className={low && !out ? "border-warning text-warning" : ""}
+                    >
+                      {out ? "Out" : low ? "Low" : "OK"}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-primary">{s.stock}</span>
+                    <span className="text-sm text-muted-foreground">{s.unit}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                    <BarChart3 className="h-3 w-3" /> Tap to view usage by project
+                  </p>
+                  <div
+                    className="flex gap-1 mt-3"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setQrFor(s)}>
+                      <QrCode className="h-4 w-4 mr-1" /> QR
+                    </Button>
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setUsageFor(s)}>
+                      <BarChart3 className="h-4 w-4 mr-1" /> Usage
+                    </Button>
+                    {user && (
+                      <>
+                        <Button
+                          size="icon" variant="outline"
+                          onClick={() => { setEditing(s); setFormOpen(true); }}
+                          title="Edit"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon" variant="outline"
+                          onClick={() => removeSupply(s)}
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </main>
 
-        {/* ── Supply grid ── */}
-        {filtered.length === 0 ? (
-          <Card className="p-12 text-center">
-            <Package2 className="h-12 w-12 mx-auto text-muted-foreground/50" />
-            <p className="mt-3 text-muted-foreground">
-              {supplies.length === 0 ? "No supplies yet." : "No supplies match your filter."}
-            </p>
-          </Card>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map(s => {
-              const low = s.stock <= s.low_stock_threshold;
-              const out = s.stock === 0;
-              return (
-                <Card
-                  key={s.id}
-                  className="p-4 hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => setUsageFor(s)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold truncate">{s.name}</h3>
-                      <p className="text-xs text-muted-foreground font-mono truncate">{s.code}</p>
-                    </div>
-                    <Badge
-                      variant={out ? "destructive" : low ? "outline" : "secondary"}
-                      className={low && !out ? "border-warning text-warning" : ""}
-                    >
-                      {out ? "Out" : low ? "Low" : "OK"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-primary">{s.stock}</span>
-                    <span className="text-sm text-muted-foreground">{s.unit}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <BarChart3 className="h-3 w-3" /> Tap to view usage by project
-                  </p>
-                  <div
-                    className="flex gap-1 mt-3"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setQrFor(s)}>
-                      <QrCode className="h-4 w-4 mr-1" /> QR
-                    </Button>
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setUsageFor(s)}>
-                      <BarChart3 className="h-4 w-4 mr-1" /> Usage
-                    </Button>
-                    {user && (
-                      <>
-                        <Button
-                          size="icon" variant="outline"
-                          onClick={() => { setEditing(s); setFormOpen(true); }}
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon" variant="outline"
-                          onClick={() => removeSupply(s)}
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </main>
+      {/* ── Dialogs ── */}
+      <CheckoutDrawer
+        open={checkoutOpen}
+        onOpenChange={setCheckoutOpen}
+        supplies={supplies}
+        projects={projects}
+      />
+      <SupplyForm
+        open={formOpen}
+        onOpenChange={o => { setFormOpen(o); if (!o) setEditing(null); }}
+        units={units}
+        defaultUnit={defaultUnit}
+        projects={projects}
+        editing={editing}
+      />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        units={units}
+        defaultUnit={defaultUnit}
+        projects={projects}
+      />
+      <QuickStockInDialog
+        open={manualIn}
+        onOpenChange={setManualIn}
+        units={units}
+        defaultUnit={defaultUnit}
+        projects={projects}
+      />
+      <ScanStockInDialog
+        open={scanIn}
+        onOpenChange={setScanIn}
+        units={units}
+        defaultUnit={defaultUnit}
+        projects={projects}
+      />
+      <SupplyUsageDialog
+        supply={usageFor}
+        onOpenChange={o => { if (!o) setUsageFor(null); }}
+      />
 
-      {/* ── Dialogs ── */}
-      <CheckoutDrawer
-        open={checkoutOpen}
-        onOpenChange={setCheckoutOpen}
-        supplies={supplies}
-        projects={projects}
-      />
-      <SupplyForm
-        open={formOpen}
-        onOpenChange={o => { setFormOpen(o); if (!o) setEditing(null); }}
-        units={units}
-        defaultUnit={defaultUnit}
-        projects={projects}
-        editing={editing}
-      />
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        units={units}
-        defaultUnit={defaultUnit}
-        projects={projects}
-      />
-      <QuickStockInDialog
-        open={manualIn}
-        onOpenChange={setManualIn}
-        units={units}
-        defaultUnit={defaultUnit}
-        projects={projects}
-      />
-      <ScanStockInDialog
-        open={scanIn}
-        onOpenChange={setScanIn}
-        units={units}
-        defaultUnit={defaultUnit}
-        projects={projects}
-      />
-      <SupplyUsageDialog
-        supply={usageFor}
-        onOpenChange={o => { if (!o) setUsageFor(null); }}
-      />
-
-      <Dialog open={!!qrFor} onOpenChange={o => { if (!o) setQrFor(null); }}>
-        <DialogContent className="max-w-xs">
-          <DialogHeader>
-            <DialogTitle className="truncate">{qrFor?.name}</DialogTitle>
-          </DialogHeader>
-          {qrFor && (
-            <div className="flex flex-col items-center gap-3">
-              <SupplyQR code={qrFor.code} size={220} />
-              <p className="text-xs font-mono text-muted-foreground">{qrFor.code}</p>
-              <Button
-                onClick={() => downloadQR(qrFor.code, qrFor.name)}
-                className="w-full"
-              >
-                Download PNG
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+      <Dialog open={!!qrFor} onOpenChange={o => { if (!o) setQrFor(null); }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="truncate">{qrFor?.name}</DialogTitle>
+          </DialogHeader>
+          {qrFor && (
+            <div className="flex flex-col items-center gap-3">
+              <SupplyQR code={qrFor.code} size={220} />
+              <p className="text-xs font-mono text-muted-foreground">{qrFor.code}</p>
+              <Button
+                onClick={() => downloadQR(qrFor.code, qrFor.name)}
+                className="w-full"
+              >
+                Download PNG
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 };
 
 export default Index;
