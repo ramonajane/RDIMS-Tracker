@@ -37,7 +37,7 @@ export const SupplyForm = ({ open, onOpenChange, units, defaultUnit, initialCode
   const [threshold, setThreshold] = useState<number>(editing?.low_stock_threshold ?? 5);
   const [notes, setNotes] = useState(editing?.notes ?? "");
   const [busy, setBusy] = useState(false);
-  const queryClient = useQueryClient();
+
 
   const reset = () => {
     setName(editing?.name ?? "");
