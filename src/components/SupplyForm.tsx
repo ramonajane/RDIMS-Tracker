@@ -9,7 +9,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { generateCode, Supply } from "@/lib/inventory";
 import { z } from "zod";
-import { useQueryClient } from "@tanstack/react-query";
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name required").max(120),
