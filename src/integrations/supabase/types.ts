@@ -40,7 +40,6 @@ export type Database = {
           low_stock_threshold: number
           name: string
           notes: string | null
-          project: string | null
           stock: number
           unit: string
           updated_at: string
@@ -53,7 +52,6 @@ export type Database = {
           low_stock_threshold?: number
           name: string
           notes?: string | null
-          project?: string | null
           stock?: number
           unit?: string
           updated_at?: string
@@ -66,7 +64,6 @@ export type Database = {
           low_stock_threshold?: number
           name?: string
           notes?: string | null
-          project?: string | null
           stock?: number
           unit?: string
           updated_at?: string
