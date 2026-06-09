@@ -34,9 +34,8 @@ const Index = () => {
   const [supplies, setSupplies]         = useState<Supply[]>([]);
   const [search, setSearch]             = useState("");
   const [lowOnly, setLowOnly]           = useState(false);
-  const [units, setUnits]               = useState<string[]>(["piece","ream","box","pack","bottle"]);
+  const [units, setUnits]                = useState<string[]>(["piece","ream","box","pack","bottle"]);
   const [defaultUnit, setDefaultUnit]   = useState("piece");
-  // ── projects is now its own top-level state ───────────────────────────
   const [projects, setProjects]         = useState<string[]>([]);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
@@ -53,37 +52,56 @@ const Index = () => {
     if (!st) return;
     if (Array.isArray(st.units))    setUnits(st.units);
     if (st.default_unit)            setDefaultUnit(st.default_unit);
-    // projects may be null/undefined in old rows — always use an array
     setProjects(Array.isArray(st.projects) ? st.projects : []);
+  };
+
+  // ── Core Data Fetchers ────────────────────────────────────────────────
+  // Re-fetching directly from the DB ensures alphabetical sorting stays perfect in real-time
+  const fetchSupplies = async () => {
+    const { data: sup } = await supabase
+      .from("supplies")
+      .select("*")
+      .order("name", { ascending: true });
+    setSupplies((sup ?? []) as Supply[]);
+  };
+
+  const fetchSettings = async () => {
+    // If logged in, prioritize the current user's profile settings row
+    let query = supabase.from("user_settings").select("*");
+    if (user) {
+      query = query.eq("user_id", user.id);
+    }
+    
+    const { data: stData } = await query.limit(1);
+
+    if (stData && stData.length > 0) {
+      applySettings(stData[0]);
+    } else if (user) {
+      // If an admin is logged in but has no configurations row yet, create it
+      const { data: newSt } = await supabase
+        .from("user_settings")
+        .insert({ user_id: user.id })
+        .select()
+        .maybeSingle();
+      if (newSt) applySettings(newSt);
+    } else {
+      // GUEST FALLBACK: Grab the first available configuration profile (the Admin's row)
+      // This allows guests to see matching projects & units instantly
+      const { data: guestFallback } = await supabase
+        .from("user_settings")
+        .select("*")
+        .limit(1);
+      if (guestFallback && guestFallback.length > 0) {
+        applySettings(guestFallback[0]);
+      }
+    }
   };
 
   // ── Initial data fetch ────────────────────────────────────────────────
   useEffect(() => {
     if (loading) return;
-    (async () => {
-      // Supplies (shared, no user filter) - ORDER BY NAME ALPHABETICALLY
-      const { data: sup } = await supabase
-        .from("supplies")
-        .select("*")
-        .order("name", { ascending: true });
-      setSupplies((sup ?? []) as Supply[]);
-
-      // User settings (only for signed-in users)
-      if (user) {
-        const { data: st } = await supabase
-          .from("user_settings")
-          .select("*")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (!st) {
-          // Insert a default row, then apply defaults
-          await supabase.from("user_settings").insert({ user_id: user.id });
-        } else {
-          applySettings(st);
-        }
-      }
-    })();
+    fetchSupplies();
+    fetchSettings();
   }, [user, loading]);
 
   // ── Realtime subscriptions ────────────────────────────────────────────
@@ -92,19 +110,12 @@ const Index = () => {
 
     const ch = supabase.channel("index-rt");
 
-    // Supply changes
+    // Supply changes -> Pull clean array state instantly for everyone
     ch.on(
       "postgres_changes",
       { event: "*", schema: "public", table: "supplies" },
-      (payload) => {
-        setSupplies(prev => {
-          if (payload.eventType === "INSERT") return [payload.new as Supply, ...prev];
-          if (payload.eventType === "UPDATE")
-            return prev.map(s => s.id === (payload.new as Supply).id ? payload.new as Supply : s);
-          if (payload.eventType === "DELETE")
-            return prev.filter(s => s.id !== (payload.old as Supply).id);
-          return prev;
-        });
+      () => {
+        fetchSupplies();
         triggerSheetSync();
       }
     );
@@ -118,22 +129,19 @@ const Index = () => {
       }
     );
 
-    // User settings changes — update ALL three settings fields including projects
-    if (user) {
-      ch.on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "user_settings",
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          // payload.new contains the full updated row
-          applySettings(payload.new);
-        }
-      );
-    }
+    // Global Settings Changes -> Removed user_id filter so updates to 
+    // projects/units propagate to guest accounts live without refresh commands
+    ch.on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "user_settings",
+      },
+      () => {
+        fetchSettings();
+      }
+    );
 
     ch.subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -148,8 +156,6 @@ const Index = () => {
   }, [supplies, usageFor]);
 
   const filtered = useMemo(() => {
-    // Create a copy of the list and sort it alphabetically
-    // This ensures real-time inserts are also ordered correctly
     let list = [...supplies].sort((a, b) => a.name.localeCompare(b.name));
     
     if (search.trim()) {
