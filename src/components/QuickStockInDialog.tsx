@@ -14,61 +14,56 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   units: string[];
   defaultUnit: string;
-  projects: string[];
+  projects: string[]; // unused — kept for API parity
 };
 
-export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit, projects }: Props) => {
-
+export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit }: Props) => {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [unit, setUnit] = useState(defaultUnit);
   const [qty, setQty] = useState<number>(1);
-  const [project, setProject] = useState<string>("");
   const [busy, setBusy] = useState(false);
 
-  const reset = () => { setCode(""); setName(""); setUnit(defaultUnit); setQty(1); setProject(""); };
+  const reset = () => { setCode(""); setName(""); setUnit(defaultUnit); setQty(1); };
 
   const submit = async () => {
     if (qty <= 0) { toast.error("Quantity must be > 0"); return; }
     setBusy(true);
     try {
-      const trimmedProject = project.trim() || null;
-      // Find any existing supply with this code (shared QR across projects)
-      const { data: existingRows } = await supabase
-        .from("supplies").select("*").eq("code", code.trim());
-      const existing = existingRows && existingRows.length > 0 ? existingRows[0] : null;
+      // Existing supply by code?
+      const { data: existing } = await supabase
+        .from("supplies").select("*").eq("code", code.trim()).maybeSingle();
 
-      // If we have a project, prefer the row matching that project; else fall back to any
-      const projectMatch = existingRows?.find(
-        r => (r.project ?? null) === trimmedProject
-      );
-
-      if (projectMatch) {
-        const newStock = projectMatch.stock + qty;
-        const { error } = await supabase.from("supplies").update({ stock: newStock }).eq("id", projectMatch.id);
+      if (existing) {
+        const newStock = existing.stock + qty;
+        const { error } = await supabase.from("supplies").update({ stock: newStock }).eq("id", existing.id);
         if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: projectMatch.id, type: "in", quantity: qty, project: trimmedProject });
-        toast.success(`+${qty} ${projectMatch.unit} of ${projectMatch.name}`);
-      } else if (existing) {
-        // Same supply name exists but for other projects — create a new row reusing the shared code
-        const { data: created, error } = await supabase.from("supplies")
-          .insert({ user_id: null, name: existing.name, code: existing.code, unit: existing.unit, stock: qty, project: trimmedProject })
-          .select().single();
-        if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty, project: trimmedProject });
-        toast.success(`Added ${existing.name} for ${trimmedProject ?? "no project"} (+${qty})`);
+        await supabase.from("transactions").insert({
+          supply_id: existing.id, type: "in", quantity: qty, project: null,
+        });
+        toast.success(`+${qty} ${existing.unit} of ${existing.name}`);
       } else {
         if (!name.trim()) { toast.error("Name required for new supply"); setBusy(false); return; }
-        // Brand new supply — but if name matches an existing group, reuse that shared code
-        const { getCodeForName } = await import("@/lib/inventory");
-        const sharedCode = await getCodeForName(name.trim());
-        const finalCode = sharedCode ?? code.trim();
-        const { data: created, error } = await supabase.from("supplies")
-          .insert({ user_id: null, name: name.trim(), code: finalCode, unit, stock: qty, project: trimmedProject })
-          .select().single();
-        if (error) throw error;
-        await supabase.from("transactions").insert({ user_id: null, supply_id: created!.id, type: "in", quantity: qty, project: trimmedProject });
-        toast.success(`Added ${name} (+${qty})`);
+        // Reuse existing supply if same name already exists
+        const { data: byName } = await supabase
+          .from("supplies").select("*").ilike("name", name.trim()).maybeSingle();
+        if (byName) {
+          const newStock = byName.stock + qty;
+          await supabase.from("supplies").update({ stock: newStock }).eq("id", byName.id);
+          await supabase.from("transactions").insert({
+            supply_id: byName.id, type: "in", quantity: qty, project: null,
+          });
+          toast.success(`+${qty} ${byName.unit} of ${byName.name}`);
+        } else {
+          const { data: created, error } = await supabase.from("supplies")
+            .insert({ name: name.trim(), code: code.trim(), unit, stock: qty })
+            .select().single();
+          if (error) throw error;
+          await supabase.from("transactions").insert({
+            supply_id: created!.id, type: "in", quantity: qty, project: null,
+          });
+          toast.success(`Added ${name} (+${qty})`);
+        }
       }
       reset();
       onOpenChange(false);
@@ -87,7 +82,7 @@ export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit, pro
           <div>
             <Label>Code</Label>
             <Input value={code} onChange={e=>setCode(e.target.value)} placeholder="Existing or new code" />
-            <p className="text-xs text-muted-foreground mt-1">Existing codes will add to stock. New codes create a supply.</p>
+            <p className="text-xs text-muted-foreground mt-1">Existing codes add to the unified stock. New codes create a supply.</p>
           </div>
           <div>
             <Label>Name (only for new supplies)</Label>
@@ -105,16 +100,6 @@ export const QuickStockInDialog = ({ open, onOpenChange, units, defaultUnit, pro
               <Label>Quantity</Label>
               <Input type="number" min={1} value={qty} onChange={e=>setQty(parseInt(e.target.value)||1)} />
             </div>
-          </div>
-          <div>
-            <Label>Project (optional)</Label>
-            <Select value={project || "__none__"} onValueChange={(v)=>setProject(v === "__none__" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="No project" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">No project</SelectItem>
-                {projects.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-              </SelectContent>
-            </Select>
           </div>
         </div>
         <DialogFooter>
