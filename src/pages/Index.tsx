@@ -61,11 +61,11 @@ const Index = () => {
   useEffect(() => {
     if (loading) return;
     (async () => {
-      // Supplies (shared, no user filter)
+      // Supplies (shared, no user filter) - ORDER BY NAME ALPHABETICALLY
       const { data: sup } = await supabase
         .from("supplies")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("name", { ascending: true });
       setSupplies((sup ?? []) as Supply[]);
 
       // User settings (only for signed-in users)
@@ -148,7 +148,10 @@ const Index = () => {
   }, [supplies, usageFor]);
 
   const filtered = useMemo(() => {
-    let list = supplies;
+    // Create a copy of the list and sort it alphabetically
+    // This ensures real-time inserts are also ordered correctly
+    let list = [...supplies].sort((a, b) => a.name.localeCompare(b.name));
+    
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(s =>
@@ -302,146 +305,3 @@ const Index = () => {
             <Switch id="low" checked={lowOnly} onCheckedChange={setLowOnly} />
             <Label htmlFor="low" className="cursor-pointer text-sm flex items-center gap-1">
               <AlertTriangle className="h-3.5 w-3.5 text-warning" /> Low stock only
-            </Label>
-          </div>
-        </Card>
-
-        {/* ── Supply grid ── */}
-        {filtered.length === 0 ? (
-          <Card className="p-12 text-center">
-            <Package2 className="h-12 w-12 mx-auto text-muted-foreground/50" />
-            <p className="mt-3 text-muted-foreground">
-              {supplies.length === 0 ? "No supplies yet." : "No supplies match your filter."}
-            </p>
-          </Card>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map(s => {
-              const low = s.stock <= s.low_stock_threshold;
-              const out = s.stock === 0;
-              return (
-                <Card
-                  key={s.id}
-                  className="p-4 hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => setUsageFor(s)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold truncate">{s.name}</h3>
-                      <p className="text-xs text-muted-foreground font-mono truncate">{s.code}</p>
-                    </div>
-                    <Badge
-                      variant={out ? "destructive" : low ? "outline" : "secondary"}
-                      className={low && !out ? "border-warning text-warning" : ""}
-                    >
-                      {out ? "Out" : low ? "Low" : "OK"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 flex items-baseline gap-2">
-                    <span className="text-3xl font-bold text-primary">{s.stock}</span>
-                    <span className="text-sm text-muted-foreground">{s.unit}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                    <BarChart3 className="h-3 w-3" /> Tap to view usage by project
-                  </p>
-                  <div
-                    className="flex gap-1 mt-3"
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setQrFor(s)}>
-                      <QrCode className="h-4 w-4 mr-1" /> QR
-                    </Button>
-                    <Button size="sm" variant="outline" className="flex-1" onClick={() => setUsageFor(s)}>
-                      <BarChart3 className="h-4 w-4 mr-1" /> Usage
-                    </Button>
-                    {user && (
-                      <>
-                        <Button
-                          size="icon" variant="outline"
-                          onClick={() => { setEditing(s); setFormOpen(true); }}
-                          title="Edit"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon" variant="outline"
-                          onClick={() => removeSupply(s)}
-                          title="Delete"
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </main>
-
-      {/* ── Dialogs ── */}
-      <CheckoutDrawer
-        open={checkoutOpen}
-        onOpenChange={setCheckoutOpen}
-        supplies={supplies}
-        projects={projects}
-      />
-      <SupplyForm
-        open={formOpen}
-        onOpenChange={o => { setFormOpen(o); if (!o) setEditing(null); }}
-        units={units}
-        defaultUnit={defaultUnit}
-        projects={projects}
-        editing={editing}
-      />
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        units={units}
-        defaultUnit={defaultUnit}
-        projects={projects}
-      />
-      <QuickStockInDialog
-        open={manualIn}
-        onOpenChange={setManualIn}
-        units={units}
-        defaultUnit={defaultUnit}
-        projects={projects}
-      />
-      <ScanStockInDialog
-        open={scanIn}
-        onOpenChange={setScanIn}
-        units={units}
-        defaultUnit={defaultUnit}
-        projects={projects}
-      />
-      <SupplyUsageDialog
-        supply={usageFor}
-        onOpenChange={o => { if (!o) setUsageFor(null); }}
-      />
-
-      <Dialog open={!!qrFor} onOpenChange={o => { if (!o) setQrFor(null); }}>
-        <DialogContent className="max-w-xs">
-          <DialogHeader>
-            <DialogTitle className="truncate">{qrFor?.name}</DialogTitle>
-          </DialogHeader>
-          {qrFor && (
-            <div className="flex flex-col items-center gap-3">
-              <SupplyQR code={qrFor.code} size={220} />
-              <p className="text-xs font-mono text-muted-foreground">{qrFor.code}</p>
-              <Button
-                onClick={() => downloadQR(qrFor.code, qrFor.name)}
-                className="w-full"
-              >
-                Download PNG
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-};
-
-export default Index;
