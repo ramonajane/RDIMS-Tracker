@@ -1,55 +1,55 @@
-# Live Google Sheets Sync
 
-Push every stock-in / checkout to a Google Sheet in real time — no refresh needed, works for guest checkouts too.
+## Goal
 
-## What you'll see in the sheet
+Stop splitting supplies into one row per project. Each supply (e.g. "A4 paper") becomes a single inventory item with one shared stock number. Per-project usage is derived from the `transactions` log (checkouts), so you can still see "RRDIC has checked out 12 reams of A4".
 
-A new spreadsheet I create on first sync, with two tabs:
+## Data model change
 
-**`Inventory`** — live snapshot, one row per supply+project, rewritten on every change.
-```
-Supply Name | Code | Project | Unit | Stock | Updated At
-```
+Today: `supplies` has duplicate rows like `A4 / RRDIC / 27` and `A4 / WVHRDC / 15`.
+After: one row `A4 / stock=42`. The `project` column is removed from `supplies`. Transactions keep their `project` field — that becomes the source of truth for "who checked out what".
 
-**`Transactions`** — append-only audit log.
-```
-Timestamp | Type (in/out) | Supply Name | Code | Project | Quantity | Resulting Stock
-```
+### Migration steps (one migration)
+1. Merge duplicate supply rows by name (case-insensitive):
+   - Keep the oldest row per name as the canonical one.
+   - Sum `stock` from all siblings into it.
+   - Repoint `transactions.supply_id` from sibling rows to the canonical row.
+   - Delete sibling rows.
+2. Drop the `project` column from `supplies`.
+3. Add a unique index on `lower(name)` so duplicates can't reappear.
 
-## How it works
+`transactions.project` stays as-is and is what powers per-project reports.
 
-```text
-Stock change (UI or guest checkout)
-   → write to supplies / transactions tables
-   → Postgres realtime broadcast
-   → frontend subscription fires `sync-sheet` edge function
-   → edge function calls Google Sheets API via Lovable connector gateway
-   → sheet updates within ~1–2 seconds
-```
+## App changes
 
-Because the trigger lives on the realtime stream of the `transactions` table, every open browser stays in sync and guest checkouts also flow through — no manual refresh.
+### Inventory page (`src/pages/Index.tsx`)
+- Remove the grouping-by-name logic and `SupplyBreakdownDialog`. Each card now represents one real row, with one stock number and one QR code. Much simpler.
+- Replace the "Breakdown" button with a "Usage by project" button that opens a new dialog showing per-project checkout totals derived from transactions.
 
-## Steps
+### New: `SupplyUsageDialog`
+- Queries `transactions` for that `supply_id`, groups by `project`, sums `quantity` where `type='out'` minus `type='in'` returns (or just `out` totals — simpler).
+- Shows a list: `RRDIC — 12 reams checked out`, etc., plus a grand total.
 
-1. **Connect Google Sheets** — I'll open the connector picker; you authorize once with your Google account. The sheet will live in that account's Drive.
-2. **Enable realtime** on `supplies` and `transactions` via a small migration.
-3. **Create edge function `sync-sheet`** with two actions:
-   - `init` — creates the spreadsheet + two tabs with headers, stores the spreadsheet ID as a secret (`SHEET_ID`).
-   - `sync` — called after each change; rewrites `Inventory` tab from current DB state and appends one row to `Transactions`.
-4. **Wire the frontend**:
-   - Subscribe to `postgres_changes` on `transactions` in `src/pages/Index.tsx`; on each event, invoke `sync-sheet` (debounced ~500 ms to coalesce bursts).
-   - Also call `sync-sheet` directly after `adjustStock` and stock-in dialogs so the writer sees their own change instantly.
-5. **Auto-init**: on first invocation if `SHEET_ID` is missing, the function runs `init`, saves the ID, then returns the sheet URL so the UI can show a "View Sheet" link in Settings.
+### Checkout (`src/components/CheckoutDrawer.tsx` + `src/lib/inventory.ts`)
+- Scanning a code finds the single supply row and decrements its stock.
+- The project picker is still required — it's saved on the `transactions` row (no longer on supplies).
+- Remove the `adjustStock` branch that re-routes the decrement to a project-specific row.
 
-## Technical details
+### Stock-in (`QuickStockInDialog`, `ScanStockInDialog`, `SupplyForm`)
+- Remove the project field from the supply form and stock-in dialogs — adding stock now just increases the shared count.
+- Manual stock-in still asks for a project (recorded on the transaction) so the audit log stays meaningful; if you'd rather skip that for stock-in, say so and I'll drop it.
 
-- Edge function uses `https://connector-gateway.lovable.dev/google_sheets/v4` with `Authorization: Bearer LOVABLE_API_KEY` and `X-Connection-Api-Key: GOOGLE_SHEETS_API_KEY`.
-- `Inventory` written with `values.update` on `Inventory!A2:F` after a `values.clear`; `Transactions` written with `values:append`.
-- Realtime subscription scoped to `transactions` INSERT events; debounced sync avoids hammering the API on bulk changes.
-- Spreadsheet ID stored as a project secret so it persists across deploys and is shared by all users.
-- A "View Google Sheet" link added in `SettingsDialog.tsx` once `SHEET_ID` is set.
+### Google Sheets sync (`supabase/functions/sync-sheet/index.ts`)
+- **Inventory tab** columns become: `Supply Name | Code | Unit | Stock | Updated At` (no Project column — one row per supply).
+- **Transactions tab** unchanged — still logs `Project` per row, so per-project history is preserved in the sheet.
+- A new optional **Usage by Project** tab (pivot) can be added later if you want; not in this change unless you ask.
 
-## What I need from you after approval
+## What you'll see after
 
-- Approve the Google Sheets connector authorization popup.
-- That's it — I'll create the spreadsheet for you and share its URL in Settings.
+- Inventory list shows each supply once with a unified stock number.
+- Tapping a supply opens "Usage by project" with totals like `RRDIC: 12`, `WVHRDC: 5`.
+- Checkout flow is unchanged from the user's perspective — still pick a project at checkout.
+- Google Sheet `Inventory` tab no longer duplicates rows per project.
+
+## Open question
+
+For your existing data: `A4` will become one row with stock `27 + 15 = 42`, `Pens` becomes `24 + 8 = 32`, `Tissue` stays `89`. Confirm that's what you want before I run the migration (it's destructive — sibling rows are deleted after their stock and transactions are merged).
