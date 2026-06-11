@@ -1,55 +1,46 @@
 
-## Goal
+# Fix shared projects not saving
 
-Stop splitting supplies into one row per project. Each supply (e.g. "A4 paper") becomes a single inventory item with one shared stock number. Per-project usage is derived from the `transactions` log (checkouts), so you can still see "RRDIC has checked out 12 reams of A4".
+## Root cause
 
-## Data model change
+`Index.tsx` reads projects from the **shared** `app_settings` row (`key = 'shared_projects'`) and subscribes to realtime changes on that row. But `SettingsDialog.tsx` saves projects to the **per-user** `user_settings.projects` column instead. So every save writes to a place nothing reads from, the shared list never changes, and the UI shows it as "not saved."
 
-Today: `supplies` has duplicate rows like `A4 / RRDIC / 27` and `A4 / WVHRDC / 15`.
-After: one row `A4 / stock=42`. The `project` column is removed from `supplies`. Transactions keep their `project` field — that becomes the source of truth for "who checked out what".
+On top of that, `app_settings` currently only has a `SELECT` policy for `anon`/`authenticated`. There is no `INSERT` or `UPDATE` policy, so even if we point the dialog at `app_settings` today, the upsert would silently fail with an RLS error.
 
-### Migration steps (one migration)
-1. Merge duplicate supply rows by name (case-insensitive):
-   - Keep the oldest row per name as the canonical one.
-   - Sum `stock` from all siblings into it.
-   - Repoint `transactions.supply_id` from sibling rows to the canonical row.
-   - Delete sibling rows.
-2. Drop the `project` column from `supplies`.
-3. Add a unique index on `lower(name)` so duplicates can't reappear.
+(The "admin actions reflecting on guests" part is by design — inventory and projects are intentionally shared. You confirmed: keep shared, just fix saving.)
 
-`transactions.project` stays as-is and is what powers per-project reports.
+## Changes
 
-## App changes
+### 1. Database migration
 
-### Inventory page (`src/pages/Index.tsx`)
-- Remove the grouping-by-name logic and `SupplyBreakdownDialog`. Each card now represents one real row, with one stock number and one QR code. Much simpler.
-- Replace the "Breakdown" button with a "Usage by project" button that opens a new dialog showing per-project checkout totals derived from transactions.
+Add write policies to `app_settings` so signed-in admins can upsert shared settings rows. Guests stay read-only.
 
-### New: `SupplyUsageDialog`
-- Queries `transactions` for that `supply_id`, groups by `project`, sums `quantity` where `type='out'` minus `type='in'` returns (or just `out` totals — simpler).
-- Shows a list: `RRDIC — 12 reams checked out`, etc., plus a grand total.
+```sql
+CREATE POLICY "app_settings insert auth"
+  ON public.app_settings FOR INSERT
+  TO authenticated WITH CHECK (true);
 
-### Checkout (`src/components/CheckoutDrawer.tsx` + `src/lib/inventory.ts`)
-- Scanning a code finds the single supply row and decrements its stock.
-- The project picker is still required — it's saved on the `transactions` row (no longer on supplies).
-- Remove the `adjustStock` branch that re-routes the decrement to a project-specific row.
+CREATE POLICY "app_settings update auth"
+  ON public.app_settings FOR UPDATE
+  TO authenticated USING (true) WITH CHECK (true);
 
-### Stock-in (`QuickStockInDialog`, `ScanStockInDialog`, `SupplyForm`)
-- Remove the project field from the supply form and stock-in dialogs — adding stock now just increases the shared count.
-- Manual stock-in still asks for a project (recorded on the transaction) so the audit log stays meaningful; if you'd rather skip that for stock-in, say so and I'll drop it.
+GRANT INSERT, UPDATE ON public.app_settings TO authenticated;
+```
 
-### Google Sheets sync (`supabase/functions/sync-sheet/index.ts`)
-- **Inventory tab** columns become: `Supply Name | Code | Unit | Stock | Updated At` (no Project column — one row per supply).
-- **Transactions tab** unchanged — still logs `Project` per row, so per-project history is preserved in the sheet.
-- A new optional **Usage by Project** tab (pivot) can be added later if you want; not in this change unless you ask.
+### 2. `src/components/SettingsDialog.tsx`
 
-## What you'll see after
+Change `save()` so the projects list is written to the shared `app_settings` row, while units / default_unit continue to go to `user_settings`:
 
-- Inventory list shows each supply once with a unified stock number.
-- Tapping a supply opens "Usage by project" with totals like `RRDIC: 12`, `WVHRDC: 5`.
-- Checkout flow is unchanged from the user's perspective — still pick a project at checkout.
-- Google Sheet `Inventory` tab no longer duplicates rows per project.
+- Upsert `{ key: 'shared_projects', value: JSON.stringify(projList) }` into `app_settings` (onConflict: `key`).
+- Upsert `{ user_id, units, default_unit }` into `user_settings` (drop `projects` from this payload).
+- Both happen in the same Save click; toast on success/failure.
 
-## Open question
+### 3. `src/pages/Index.tsx`
 
-For your existing data: `A4` will become one row with stock `27 + 15 = 42`, `Pens` becomes `24 + 8 = 32`, `Tissue` stays `89`. Confirm that's what you want before I run the migration (it's destructive — sibling rows are deleted after their stock and transactions are merged).
+No structural change — it already reads/subscribes to `app_settings` for `SHARED_PROJECTS_KEY`. Just remove the dead `projects`-from-`user_settings` read path so there's one source of truth.
+
+## Result
+
+- Add a project → Save → it persists in `app_settings`, realtime fans it out to every open browser (admins and guests), and it appears in the Checkout project dropdown for everyone immediately.
+- Supplies and projects remain shared (current behavior preserved).
+- Guests still can't modify the projects list (RLS blocks writes for `anon`).
