@@ -92,18 +92,23 @@ export const SettingsDialog = ({ open, onOpenChange, units, defaultUnit, project
     if (!user) return;
     setBusy(true);
     try {
-      const payload = {
-        user_id: user.id,
-        units: list,
-        default_unit: def,
-        projects: projList,
-      };
-
-      const { error } = await supabase
+      // Per-admin unit preferences
+      const { error: e1 } = await supabase
         .from("user_settings")
-        .upsert(payload, { onConflict: "user_id" });
+        .upsert(
+          { user_id: user.id, units: list, default_unit: def },
+          { onConflict: "user_id" },
+        );
+      if (e1) throw e1;
 
-      if (error) throw error;
+      // Shared projects list — visible to every user (admin + guest)
+      const { error: e2 } = await supabase
+        .from("app_settings")
+        .upsert(
+          { key: "shared_projects", value: JSON.stringify(projList) },
+          { onConflict: "key" },
+        );
+      if (e2) throw e2;
 
       toast.success("Settings saved");
       onOpenChange(false);
